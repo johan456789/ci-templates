@@ -1,0 +1,98 @@
+name: Android app (Gradle)
+
+on:
+  workflow_call:
+    inputs:
+      java_version:
+        type: string
+        required: false
+        default: '17'
+      gradle_task:
+        description: Gradle task(s) to run, e.g. assembleRelease or bundleRelease
+        type: string
+        required: false
+        default: assembleRelease
+      project_dir:
+        description: Directory containing gradlew (root for native Android projects)
+        type: string
+        required: false
+        default: .
+      properties_file:
+        description: Where key.properties is written (relative to repo root)
+        type: string
+        required: false
+        default: key.properties
+      publish_release:
+        description: Attach APK/AAB to a GitHub release when triggered by a v* tag
+        type: boolean
+        required: false
+        default: true
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java_version }}
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Configure Android signing
+        if: env.HAS_KEYSTORE == 'true'
+        uses: ./actions/sign-android
+        with:
+          keystore_base64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          keystore_password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          key_alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          key_password: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          keystore_file: upload-keystore.jks
+          properties_file: ${{ inputs.properties_file }}
+
+      - name: Build
+        run: ./gradlew ${{ inputs.gradle_task }} --no-daemon
+        working-directory: ${{ inputs.project_dir }}
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p dist
+          find . -type f \( -name '*.apk' -o -name '*.aab' \) -path '*/build/outputs/*' -not -path './dist/*' -exec cp {} dist/ \;
+          ls -lh dist/
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: inputs.publish_release && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes
+          fi
