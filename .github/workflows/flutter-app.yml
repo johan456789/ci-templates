@@ -1,0 +1,118 @@
+name: Flutter app
+
+on:
+  workflow_call:
+    inputs:
+      flutter_version:
+        description: Pinned Flutter version (empty = latest stable)
+        type: string
+        required: false
+        default: ''
+      java_version:
+        type: string
+        required: false
+        default: '17'
+      run_analyze:
+        type: boolean
+        required: false
+        default: true
+      run_test:
+        type: boolean
+        required: false
+        default: true
+      abi_splits:
+        description: Build split-per-ABI APKs instead of one universal APK
+        type: boolean
+        required: false
+        default: false
+      publish_release:
+        description: Attach APKs to a GitHub release when triggered by a v* tag
+        type: boolean
+        required: false
+        default: true
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./actions/setup-flutter
+        with:
+          flutter_version: ${{ inputs.flutter_version }}
+          java_version: ${{ inputs.java_version }}
+
+      - run: flutter pub get
+
+      - name: Analyze
+        if: inputs.run_analyze
+        run: flutter analyze
+
+      - name: Test
+        if: inputs.run_test
+        run: flutter test
+
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./actions/setup-flutter
+        with:
+          flutter_version: ${{ inputs.flutter_version }}
+          java_version: ${{ inputs.java_version }}
+
+      - run: flutter pub get
+
+      - name: Configure Android signing
+        if: env.HAS_KEYSTORE == 'true'
+        uses: ./actions/sign-android
+        with:
+          keystore_base64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          keystore_password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          key_alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          key_password: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Build APK
+        run: flutter build apk --release ${{ inputs.abi_splits && '--split-per-abi' || '' }}
+
+      - name: Collect APKs
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/*.apk dist/
+          ls -lh dist/
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: dist/*.apk
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: inputs.publish_release && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/*.apk --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/*.apk --title "$GITHUB_REF_NAME" --generate-notes
+          fi
