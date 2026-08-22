@@ -40,9 +40,9 @@ on:
       ANDROID_KEY_PASSWORD:
         required: false
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+# NOTE: no concurrency here on purpose. In a called workflow github.workflow is the
+# CALLER's name, so a fixed group would collide when one caller invokes multiple
+# templates. Set concurrency in your app repo's thin workflow instead.
 
 jobs:
   test:
@@ -70,7 +70,7 @@ jobs:
     permissions:
       contents: write
     env:
-      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@v4
 
