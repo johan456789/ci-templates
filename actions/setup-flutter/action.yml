@@ -1,0 +1,25 @@
+name: Setup Flutter
+description: Installs JDK + Flutter toolchain with pub/gradle caching
+
+inputs:
+  flutter_version:
+    description: Pinned Flutter version (empty = latest stable)
+    required: false
+    default: ''
+  java_version:
+    required: false
+    default: '17'
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.java_version }}
+
+    - uses: subosito/flutter-action@v2
+      with:
+        channel: stable
+        flutter-version: ${{ inputs.flutter_version == '' && '3.x' || inputs.flutter_version }}
+        cache: true

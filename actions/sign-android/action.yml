@@ -1,0 +1,41 @@
+name: Sign Android
+description: Decodes a base64 keystore and writes key.properties for Gradle signing
+
+inputs:
+  keystore_base64:
+    description: Base64-encoded .jks keystore file
+    required: true
+  keystore_password:
+    required: true
+  key_alias:
+    required: true
+  key_password:
+    required: true
+  keystore_file:
+    description: Where to write the keystore (relative to workspace)
+    required: false
+    default: android/app/upload-keystore.jks
+  properties_file:
+    description: Where to write key.properties (relative to workspace)
+    required: false
+    default: android/key.properties
+
+runs:
+  using: composite
+  steps:
+    - name: Decode keystore
+      shell: bash
+      run: |
+        mkdir -p "$(dirname "${{ github.workspace }}/${{ inputs.keystore_file }}")"
+        echo "${{ inputs.keystore_base64 }}" | base64 -d > "${{ github.workspace }}/${{ inputs.keystore_file }}"
+
+    - name: Write key.properties
+      shell: bash
+      run: |
+        mkdir -p "$(dirname "${{ github.workspace }}/${{ inputs.properties_file }}")"
+        cat > "${{ github.workspace }}/${{ inputs.properties_file }}" <<EOF
+        storeFile=${{ github.workspace }}/${{ inputs.keystore_file }}
+        storePassword=${{ inputs.keystore_password }}
+        keyAlias=${{ inputs.key_alias }}
+        keyPassword=${{ inputs.key_password }}
+        EOF
