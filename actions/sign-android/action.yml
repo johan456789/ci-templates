@@ -45,9 +45,10 @@ runs:
       shell: bash
       env:
         IN_KEYSTORE_BASE64: ${{ inputs.keystore_base64 }}
+        IN_KEYSTORE_FILE: ${{ inputs.keystore_file }}
       run: |
-        mkdir -p "$(dirname "${{ github.workspace }}/${{ inputs.keystore_file }}")"
-        echo "$IN_KEYSTORE_BASE64" | base64 -d > "${{ github.workspace }}/${{ inputs.keystore_file }}"
+        mkdir -p "$(dirname "${{ github.workspace }}/$IN_KEYSTORE_FILE")"
+        echo "$IN_KEYSTORE_BASE64" | base64 -d > "${{ github.workspace }}/$IN_KEYSTORE_FILE"
 
     - name: Write key.properties
       shell: bash
@@ -56,11 +57,12 @@ runs:
         STORE_PASSWORD: ${{ inputs.keystore_password }}
         KEY_ALIAS: ${{ inputs.key_alias }}
         KEY_PASSWORD: ${{ inputs.key_password }}
+        IN_PROPERTIES_FILE: ${{ inputs.properties_file }}
       run: |
-        mkdir -p "$(dirname "${{ github.workspace }}/${{ inputs.properties_file }}")"
+        mkdir -p "$(dirname "${{ github.workspace }}/$IN_PROPERTIES_FILE")"
         {
           echo "storeFile=$STORE_FILE"
           echo "storePassword=$STORE_PASSWORD"
           echo "keyAlias=$KEY_ALIAS"
           echo "keyPassword=$KEY_PASSWORD"
-        } > "${{ github.workspace }}/${{ inputs.properties_file }}"
+        } > "${{ github.workspace }}/$IN_PROPERTIES_FILE"

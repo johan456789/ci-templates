@@ -73,6 +73,20 @@ jobs:
       platforms_json: '["linux", "windows"]'   # add "macos" if desired
 ```
 
+### All inputs (defaults in parentheses)
+
+| Input | Workflow | Values |
+|---|---|---|
+| `flutter_version` (`''`) | flutter-app, desktop-app | pinned Flutter version, empty = latest stable |
+| `java_version` (`17`) | all | Temurin JDK version |
+| `run_analyze` / `run_test` (`true`) | flutter-app | toggle analyze/test steps |
+| `abi_splits` (`false`) | flutter-app | split-per-ABI APKs instead of universal |
+| `gradle_task` (`assembleRelease`) | android-gradle-app | any Gradle task(s) |
+| `project_dir` (`.`) | android-gradle-app | dir containing `gradlew` |
+| `properties_file` (`key.properties`) | android-gradle-app | where key.properties is written |
+| `platforms_json` (`'["linux"]'`) | desktop-app | JSON array subset of linux/windows/macos |
+| `publish_release` (`true`) | all | attach artifacts to a GitHub Release on `v*` tags |
+
 > Until this repo has a `v1` tag, callers must reference `@main` instead of `@v1`.
 
 ## Android signing
@@ -86,6 +100,8 @@ The workflows sign automatically when these **repo secrets** exist in the app re
 | `ANDROID_KEY_ALIAS` | key alias |
 | `ANDROID_KEY_PASSWORD` | key password |
 
+Signing is **all-or-nothing**: if *any* of the four secrets is set, all four are required — a partial config fails the build with an error naming exactly which secret is missing. With none set, builds still succeed but produce an APK signed with the debug key (Flutter) or left unsigned (native Gradle projects without signing wiring) — fine for CI checks, but **not** shippable to Obtainium.
+
 Create a keystore and the base64 secret:
 
 ```bash
@@ -93,7 +109,9 @@ keytool -genkey -v -keystore upload-keystore.jks -keyalg RSA -keysize 2048 -vali
 base64 -w0 upload-keystore.jks   # paste output into ANDROID_KEYSTORE_BASE64
 ```
 
-Without these secrets, builds still succeed but produce an **unsigned** APK (fine for CI checks, not installable).
+### Releases need write permission
+
+The release steps create GitHub Releases with `GITHUB_TOKEN`. If your repo or org defaults workflow tokens to read-only, allow **Settings → Actions → General → Workflow permissions → Read and write**, or the release job fails.
 
 ### Gradle wiring
 
