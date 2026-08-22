@@ -23,19 +23,44 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Validate signing inputs
+      shell: bash
+      env:
+        IN_KEYSTORE_BASE64: ${{ inputs.keystore_base64 }}
+        IN_KEYSTORE_PASSWORD: ${{ inputs.keystore_password }}
+        IN_KEY_ALIAS: ${{ inputs.key_alias }}
+        IN_KEY_PASSWORD: ${{ inputs.key_password }}
+      run: |
+        missing=""
+        [ -z "$IN_KEYSTORE_BASE64" ] && missing="$missing keystore_base64"
+        [ -z "$IN_KEYSTORE_PASSWORD" ] && missing="$missing keystore_password"
+        [ -z "$IN_KEY_ALIAS" ] && missing="$missing key_alias"
+        [ -z "$IN_KEY_PASSWORD" ] && missing="$missing key_password"
+        if [ -n "$missing" ]; then
+          echo "::error::sign-android is missing required inputs:$missing — check the repo secrets"
+          exit 1
+        fi
+
     - name: Decode keystore
       shell: bash
+      env:
+        IN_KEYSTORE_BASE64: ${{ inputs.keystore_base64 }}
       run: |
         mkdir -p "$(dirname "${{ github.workspace }}/${{ inputs.keystore_file }}")"
-        echo "${{ inputs.keystore_base64 }}" | base64 -d > "${{ github.workspace }}/${{ inputs.keystore_file }}"
+        echo "$IN_KEYSTORE_BASE64" | base64 -d > "${{ github.workspace }}/${{ inputs.keystore_file }}"
 
     - name: Write key.properties
       shell: bash
+      env:
+        STORE_FILE: ${{ github.workspace }}/${{ inputs.keystore_file }}
+        STORE_PASSWORD: ${{ inputs.keystore_password }}
+        KEY_ALIAS: ${{ inputs.key_alias }}
+        KEY_PASSWORD: ${{ inputs.key_password }}
       run: |
         mkdir -p "$(dirname "${{ github.workspace }}/${{ inputs.properties_file }}")"
-        cat > "${{ github.workspace }}/${{ inputs.properties_file }}" <<EOF
-        storeFile=${{ github.workspace }}/${{ inputs.keystore_file }}
-        storePassword=${{ inputs.keystore_password }}
-        keyAlias=${{ inputs.key_alias }}
-        keyPassword=${{ inputs.key_password }}
-        EOF
+        {
+          echo "storeFile=$STORE_FILE"
+          echo "storePassword=$STORE_PASSWORD"
+          echo "keyAlias=$KEY_ALIAS"
+          echo "keyPassword=$KEY_PASSWORD"
+        } > "${{ github.workspace }}/${{ inputs.properties_file }}"
