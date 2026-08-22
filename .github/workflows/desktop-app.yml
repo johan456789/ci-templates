@@ -23,9 +23,9 @@ on:
         required: false
         default: true
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+# NOTE: no concurrency here on purpose. In a called workflow github.workflow is the
+# CALLER's name, so a fixed group would collide when one caller invokes multiple
+# templates. Set concurrency in your app repo's thin workflow instead.
 
 jobs:
   prepare:
@@ -37,7 +37,11 @@ jobs:
         env:
           PLATFORMS_JSON: ${{ inputs.platforms_json }}
         run: |
-          echo "platforms=$PLATFORMS_JSON" >> "$GITHUB_OUTPUT"
+          if ! jq -e 'type == "array" and length > 0 and all(.[]; IN("linux", "windows", "macos"))' <<<"$PLATFORMS_JSON" > /dev/null; then
+            echo "::error::platforms_json must be a JSON array with values from: linux, windows, macos (got: $PLATFORMS_JSON)"
+            exit 1
+          fi
+          echo "platforms=$(jq -c 'unique' <<<"$PLATFORMS_JSON")" >> "$GITHUB_OUTPUT"
 
   build:
     # NOTE: macOS runners consume minutes at 10x on private repos
