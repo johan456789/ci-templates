@@ -22,6 +22,11 @@ on:
         type: string
         required: false
         default: key.properties
+      keystore_file:
+        description: Where the decoded keystore is written (relative to repo root)
+        type: string
+        required: false
+        default: upload-keystore.jks
       publish_release:
         description: Attach APK/AAB to a GitHub release when triggered by a v* tag
         type: boolean
@@ -68,7 +73,7 @@ jobs:
           keystore_password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           key_alias: ${{ secrets.ANDROID_KEY_ALIAS }}
           key_password: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          keystore_file: upload-keystore.jks
+          keystore_file: ${{ inputs.keystore_file }}
           properties_file: ${{ inputs.properties_file }}
 
       - name: Build
