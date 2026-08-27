@@ -63,7 +63,18 @@ jobs:
           distribution: temurin
           java-version: ${{ inputs.java_version }}
 
-      - uses: gradle/actions/setup-gradle@v4
+      # Cache Gradle User Home (wrapper distribution + dependency caches) so the
+      # app's wrapper-pinned Gradle isn't re-downloaded every run. We run
+      # `./gradlew` directly rather than gradle/actions/setup-gradle because that
+      # action provisions its OWN Gradle version (9.x) and ignores the repo's
+      # wrapper -- which broke builds on repos pinned to an older Gradle.
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/gradle-wrapper.properties', '**/*.gradle*', '**/gradle/libs.versions.toml') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
 
       - name: Configure Android signing
         if: env.HAS_KEYSTORE == 'true'
