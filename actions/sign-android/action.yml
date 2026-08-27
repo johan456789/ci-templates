@@ -10,7 +10,9 @@ inputs:
   key_alias:
     required: true
   key_password:
-    required: true
+    description: Key password. Optional — defaults to keystore_password (correct for PKCS12 keystores, which is keytool's default)
+    required: false
+    default: ''
   keystore_file:
     description: Where to write the keystore (relative to workspace)
     required: false
@@ -35,7 +37,6 @@ runs:
         [ -z "$IN_KEYSTORE_BASE64" ] && missing="$missing keystore_base64"
         [ -z "$IN_KEYSTORE_PASSWORD" ] && missing="$missing keystore_password"
         [ -z "$IN_KEY_ALIAS" ] && missing="$missing key_alias"
-        [ -z "$IN_KEY_PASSWORD" ] && missing="$missing key_password"
         if [ -n "$missing" ]; then
           echo "::error::sign-android is missing required inputs:$missing — check the repo secrets"
           exit 1
@@ -59,10 +60,12 @@ runs:
         KEY_PASSWORD: ${{ inputs.key_password }}
         IN_PROPERTIES_FILE: ${{ inputs.properties_file }}
       run: |
+        # PKCS12 (keytool default) shares the key password with the keystore
+        KEY_PASSWORD_RESOLVED="${KEY_PASSWORD:-$STORE_PASSWORD}"
         mkdir -p "$(dirname "${{ github.workspace }}/$IN_PROPERTIES_FILE")"
         {
           echo "storeFile=$STORE_FILE"
           echo "storePassword=$STORE_PASSWORD"
           echo "keyAlias=$KEY_ALIAS"
-          echo "keyPassword=$KEY_PASSWORD"
+          echo "keyPassword=$KEY_PASSWORD_RESOLVED"
         } > "${{ github.workspace }}/$IN_PROPERTIES_FILE"
