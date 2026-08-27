@@ -50,7 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./actions/setup-flutter
+      - uses: johan456789/ci-templates/actions/setup-flutter@main
         with:
           flutter_version: ${{ inputs.flutter_version }}
           java_version: ${{ inputs.java_version }}
@@ -76,7 +76,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./actions/setup-flutter
+      - uses: johan456789/ci-templates/actions/setup-flutter@main
         with:
           flutter_version: ${{ inputs.flutter_version }}
           java_version: ${{ inputs.java_version }}
@@ -85,7 +85,7 @@ jobs:
 
       - name: Configure Android signing
         if: env.HAS_KEYSTORE == 'true'
-        uses: ./actions/sign-android
+        uses: johan456789/ci-templates/actions/sign-android@main
         with:
           keystore_base64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           keystore_password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}

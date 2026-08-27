@@ -63,7 +63,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: ./actions/setup-flutter
+      - uses: johan456789/ci-templates/actions/setup-flutter@main
         with:
           flutter_version: ${{ inputs.flutter_version }}
           java_version: ${{ inputs.java_version }}
