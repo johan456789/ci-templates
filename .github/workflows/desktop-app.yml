@@ -44,7 +44,6 @@ jobs:
           echo "platforms=$(jq -c 'unique' <<<"$PLATFORMS_JSON")" >> "$GITHUB_OUTPUT"
 
   build:
-    # NOTE: macOS runners consume minutes at 10x on private repos
     needs: prepare
     strategy:
       fail-fast: false

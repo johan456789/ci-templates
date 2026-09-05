@@ -1,6 +1,6 @@
 # ci-templates
 
-Reusable GitHub Actions workflows and composite actions for my apps — Flutter and native Kotlin, Android and desktop. One private repo holds all the CI logic; every app repo keeps a thin ~5-line workflow that calls into it.
+Reusable GitHub Actions workflows and composite actions for my apps — Flutter and native Kotlin, Android and desktop. One repo holds all the CI logic; every app repo keeps a thin ~5-line workflow that calls into it.
 
 ## Layout
 
@@ -171,6 +171,6 @@ Never reference `@main` from app repos unless you want live-on-main changes ever
 
 ## Notes
 
-- All workflows run on `ubuntu-latest` by default — free within GitHub's 2,000 min/month private-repo quota (~300–500 Android builds/month).
-- macOS desktop runners bill at 10x on private repos; keep `"macos"` out of `platforms_json` unless needed.
+- All workflows run on `ubuntu-latest` by default — free for public repos (~300–500 Android builds/month within typical free quotas).
+- macOS desktop runners cost ~10x per-minute vs Linux; keep `"macos"` out of `platforms_json` unless needed.
 - Reusable workflows referenced here resolve local actions (`./actions/...`) against **this** repo at the pinned ref — no cross-repo action config needed.
