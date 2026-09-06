@@ -27,6 +27,26 @@ on:
         type: string
         required: false
         default: upload-keystore.jks
+      prebuild_script:
+        description: Shell command run after checkout (e.g. ./build_native_dep.sh). Empty = skip.
+        type: string
+        required: false
+        default: ''
+      prebuild_cache_path:
+        description: Path the prebuild script produces; restored/saved via cache. Empty = no cache.
+        type: string
+        required: false
+        default: ''
+      prebuild_cache_key:
+        description: Cache namespace for prebuild_cache_path. Required when prebuild_cache_path is set.
+        type: string
+        required: false
+        default: ''
+      prebuild_cache_hash_files:
+        description: Optional file glob (evaluated post-checkout in the caller repo) appended to the cache key for auto-invalidation, e.g. the build script itself.
+        type: string
+        required: false
+        default: ''
       publish_release:
         description: Attach APK/AAB to a GitHub release when triggered by a v* tag
         type: boolean
@@ -84,6 +104,24 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('**/gradle-wrapper.properties', '**/*.gradle*', '**/gradle/libs.versions.toml') }}
           restore-keys: |
             gradle-${{ runner.os }}-${{ hashFiles('**/gradle-wrapper.properties') }}-
+
+      # Optional pre-build hook for repos that aren't build-ready after
+      # checkout (e.g. a gitignored native library compiled by a repo script).
+      # All inputs default to empty = hook skipped, so existing callers that
+      # pass nothing behave exactly as before.
+      - name: Restore prebuild cache
+        id: prebuild-cache
+        if: inputs.prebuild_cache_path != '' && inputs.prebuild_cache_key != ''
+        uses: actions/cache@v4
+        with:
+          path: ${{ inputs.prebuild_cache_path }}
+          key: ${{ inputs.prebuild_cache_key }}-${{ inputs.prebuild_cache_hash_files != '' && hashFiles(inputs.prebuild_cache_hash_files) || 'v1' }}
+          restore-keys: |
+            ${{ inputs.prebuild_cache_key }}-
+
+      - name: Run prebuild script
+        if: inputs.prebuild_script != '' && (inputs.prebuild_cache_path == '' || steps.prebuild-cache.outputs.cache-hit != 'true')
+        run: ${{ inputs.prebuild_script }}
 
       - name: Configure Android signing
         if: env.HAS_KEYSTORE == 'true'

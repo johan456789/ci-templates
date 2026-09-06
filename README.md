@@ -63,6 +63,23 @@ jobs:
     secrets: inherit
 ```
 
+Repos that aren't build-ready after checkout (e.g. a gitignored native
+library compiled by a repo script) can hook in setup without forking the
+template:
+
+```yaml
+    with:
+      prebuild_script: mkdir -p app/libs && ./build_ffmpegkit.sh  # what to run after checkout
+      prebuild_cache_path: app/libs                               # what it produces
+      prebuild_cache_key: ffmpeg-aar                              # cache namespace
+      prebuild_cache_hash_files: build_ffmpegkit.sh               # auto-invalidate when this changes
+```
+
+The script runs in the *caller's* checkout, so `./` paths resolve to the app
+repo. `prebuild_cache_hash_files` is hashed post-checkout (a caller-side
+`hashFiles()` in `with:` would evaluate before checkout and always miss).
+All four default to empty = hook skipped, so existing callers are unaffected.
+
 ### Flutter desktop app
 
 ```yaml
@@ -83,6 +100,10 @@ jobs:
 | `abi_splits` (`false`) | flutter-app | split-per-ABI APKs instead of universal |
 | `gradle_task` (`assembleRelease`) | android-gradle-app | any Gradle task(s) |
 | `project_dir` (`.`) | android-gradle-app | dir containing `gradlew` |
+| `prebuild_script` (`''`) | android-gradle-app | shell run after checkout; empty = skip |
+| `prebuild_cache_path` (`''`) | android-gradle-app | path the script produces; empty = no cache |
+| `prebuild_cache_key` (`''`) | android-gradle-app | cache namespace (required with path) |
+| `prebuild_cache_hash_files` (`''`) | android-gradle-app | glob hashed into the key for auto-invalidation |
 | `properties_file` (`key.properties`) | android-gradle-app | where key.properties is written |
 | `platforms_json` (`'["linux"]'`) | desktop-app | JSON array subset of linux/windows/macos |
 | `publish_release` (`true`) | all | attach artifacts to a GitHub Release on `v*` tags |
