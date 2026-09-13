@@ -25,6 +25,11 @@ on:
         type: boolean
         required: false
         default: false
+      prebuild_script:
+        description: Optional shell command run after pub get, before codegen/build (e.g. write a gitignored .env from secrets). Empty = skipped.
+        type: string
+        required: false
+        default: ''
       abi_splits:
         description: Build split-per-ABI APKs instead of one universal APK
         type: boolean
@@ -62,6 +67,10 @@ jobs:
 
       - run: flutter pub get
 
+      - name: Run prebuild script
+        if: inputs.prebuild_script != ''
+        run: ${{ inputs.prebuild_script }}
+
       - name: Generate code
         if: inputs.run_build_runner
         run: dart run build_runner build --delete-conflicting-outputs
@@ -91,6 +100,10 @@ jobs:
           java_version: ${{ inputs.java_version }}
 
       - run: flutter pub get
+
+      - name: Run prebuild script
+        if: inputs.prebuild_script != ''
+        run: ${{ inputs.prebuild_script }}
 
       - name: Generate code
         if: inputs.run_build_runner
