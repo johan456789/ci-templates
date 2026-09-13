@@ -71,10 +71,12 @@ jobs:
       - run: flutter pub get
 
       - name: Write .env
-        if: secrets.DOTENV != ''
         env:
           DOTENV: ${{ secrets.DOTENV }}
-        run: echo "$DOTENV" > .env
+        run: |
+          if [ -n "$DOTENV" ]; then
+            echo "$DOTENV" > .env
+          fi
 
       - name: Run prebuild script
         if: inputs.prebuild_script != ''
@@ -111,10 +113,12 @@ jobs:
       - run: flutter pub get
 
       - name: Write .env
-        if: secrets.DOTENV != ''
         env:
           DOTENV: ${{ secrets.DOTENV }}
-        run: echo "$DOTENV" > .env
+        run: |
+          if [ -n "$DOTENV" ]; then
+            echo "$DOTENV" > .env
+          fi
 
       - name: Run prebuild script
         if: inputs.prebuild_script != ''
