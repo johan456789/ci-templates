@@ -49,6 +49,9 @@ on:
         required: false
       ANDROID_KEY_PASSWORD:
         required: false
+      DOTENV:
+        description: Full .env file contents written to .env before codegen/build (for gitignored env vars)
+        required: false
 
 # NOTE: no concurrency here on purpose. In a called workflow github.workflow is the
 # CALLER's name, so a fixed group would collide when one caller invokes multiple
@@ -66,6 +69,12 @@ jobs:
           java_version: ${{ inputs.java_version }}
 
       - run: flutter pub get
+
+      - name: Write .env
+        if: secrets.DOTENV != ''
+        env:
+          DOTENV: ${{ secrets.DOTENV }}
+        run: echo "$DOTENV" > .env
 
       - name: Run prebuild script
         if: inputs.prebuild_script != ''
@@ -100,6 +109,12 @@ jobs:
           java_version: ${{ inputs.java_version }}
 
       - run: flutter pub get
+
+      - name: Write .env
+        if: secrets.DOTENV != ''
+        env:
+          DOTENV: ${{ secrets.DOTENV }}
+        run: echo "$DOTENV" > .env
 
       - name: Run prebuild script
         if: inputs.prebuild_script != ''
