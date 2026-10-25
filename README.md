@@ -48,6 +48,10 @@ Useful inputs:
 ```yaml
     with:
       abi_splits: true          # split-per-ABI APKs instead of universal
+      lfs: true                 # fetch Git LFS files (fonts/assets) on checkout
+      build_args: --dart-define-from-file=.env  # extra flags for `flutter build apk`
+      analyze_args: --no-fatal-infos            # extra flags for `flutter analyze`
+      version_from_tag: true    # v1.2.3 tag -> --build-name=1.2.3 --build-number=<run number>
       publish_release: true     # attach APKs to release on v* tags (default true)
       flutter_version: '3.24.0' # pin if needed
 ```
@@ -98,6 +102,10 @@ jobs:
 | `java_version` (`17`) | all | Temurin JDK version |
 | `run_analyze` / `run_test` (`true`) | flutter-app | toggle analyze/test steps |
 | `abi_splits` (`false`) | flutter-app | split-per-ABI APKs instead of universal |
+| `lfs` (`false`) | flutter-app | fetch Git LFS files on checkout |
+| `analyze_args` (`''`) | flutter-app | extra args appended to `flutter analyze` |
+| `build_args` (`''`) | flutter-app | extra args appended to `flutter build apk --release` |
+| `version_from_tag` (`false`) | flutter-app | on `v*` tags, `--build-name` from the tag (minus `v`), `--build-number` from `github.run_number` |
 | `gradle_task` (`assembleRelease`) | android-gradle-app | any Gradle task(s) |
 | `project_dir` (`.`) | android-gradle-app | dir containing `gradlew` |
 | `prebuild_script` (`''`) | android-gradle-app | shell run after checkout; empty = skip |
