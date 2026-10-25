@@ -51,7 +51,7 @@ Useful inputs:
       lfs: true                 # fetch Git LFS files (fonts/assets) on checkout
       build_args: --dart-define-from-file=.env  # extra flags for `flutter build apk`
       analyze_args: --no-fatal-infos            # extra flags for `flutter analyze`
-      version_from_tag: true    # v1.2.3 tag -> --build-name=1.2.3 --build-number=<run number>
+      check_tag_version: false  # skip the v* tag == pubspec.yaml version check (default true)
       publish_release: true     # attach APKs to release on v* tags (default true)
       flutter_version: '3.24.0' # pin if needed
 ```
@@ -105,7 +105,7 @@ jobs:
 | `lfs` (`false`) | flutter-app | fetch Git LFS files on checkout |
 | `analyze_args` (`''`) | flutter-app | extra args appended to `flutter analyze` |
 | `build_args` (`''`) | flutter-app | extra args appended to `flutter build apk --release` |
-| `version_from_tag` (`false`) | flutter-app | on `v*` tags, `--build-name` from the tag (minus `v`), `--build-number` from `github.run_number` |
+| `check_tag_version` (`true`) | flutter-app | on `v*` tags, fail unless the tag (minus `v`) equals the `pubspec.yaml` version (minus `+build`) |
 | `gradle_task` (`assembleRelease`) | android-gradle-app | any Gradle task(s) |
 | `project_dir` (`.`) | android-gradle-app | dir containing `gradlew` |
 | `prebuild_script` (`''`) | android-gradle-app | shell run after checkout; empty = skip |
@@ -184,6 +184,7 @@ git tag v1.2.3 && git push origin v1.2.3
 ```
 
 - The tag becomes the release name; notes are auto-generated.
+- Flutter apps: the APK version comes from `pubspec.yaml`, and the build fails if the tag doesn't match it (`v1.2.3` needs `version: 1.2.3+N`). Bump `pubspec.yaml`, including `+N`, before tagging.
 - Built APKs are attached as release assets — point Obtainium at the repo's GitHub Releases and it picks up updates.
 - Obtainium installs **APKs only** (not AABs) — use `flutter-app.yml` or `assembleRelease`, not `bundleRelease`.
 - Private repos work in Obtainium since v0.14.11-beta but require each user to supply a PAT with read access.
