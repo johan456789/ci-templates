@@ -45,11 +45,11 @@ on:
         type: string
         required: false
         default: ''
-      version_from_tag:
-        description: On v* tag builds, pass --build-name from the tag (minus the leading v) and --build-number from github.run_number
+      check_tag_version:
+        description: On v* tag builds, fail unless the tag (minus the leading v) equals the pubspec.yaml version (minus +build)
         type: boolean
         required: false
-        default: false
+        default: true
       abi_splits:
         description: Build split-per-ABI APKs instead of one universal APK
         type: boolean
@@ -133,6 +133,18 @@ jobs:
         with:
           lfs: ${{ inputs.lfs }}
 
+      - name: Check tag matches pubspec version
+        if: inputs.check_tag_version && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          # "version: 1.2.3+4" (optionally quoted) -> "1.2.3"
+          pubspec_version=$(sed -nE "s/^version:[[:space:]]*['\"]?([^+'\" #]+).*/\1/p" pubspec.yaml | head -n1)
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$tag_version" != "$pubspec_version" ]; then
+            echo "::error file=pubspec.yaml::Tag $GITHUB_REF_NAME does not match pubspec.yaml version '$pubspec_version'. Bump pubspec.yaml and re-tag, or set check_tag_version: false."
+            exit 1
+          fi
+          echo "Tag $GITHUB_REF_NAME matches pubspec.yaml version $pubspec_version"
+
       - uses: johan456789/ci-templates/actions/setup-flutter@main
         with:
           flutter_version: ${{ inputs.flutter_version }}
@@ -169,13 +181,9 @@ jobs:
         env:
           BUILD_ARGS: ${{ inputs.build_args }}
           ABI_SPLITS: ${{ inputs.abi_splits }}
-          VERSION_FROM_TAG: ${{ inputs.version_from_tag }}
         run: |
           args=()
           [ "$ABI_SPLITS" = true ] && args+=(--split-per-abi)
-          if [ "$VERSION_FROM_TAG" = true ] && [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            args+=(--build-name="${GITHUB_REF_NAME#v}" --build-number="$GITHUB_RUN_NUMBER")
-          fi
           read -r -a extra <<< "$BUILD_ARGS"
           flutter build apk --release "${args[@]}" "${extra[@]}"
 
