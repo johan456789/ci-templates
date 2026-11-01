@@ -107,7 +107,7 @@ jobs:
 | `build_args` (`''`) | flutter-app | extra args appended to `flutter build apk --release` |
 | `check_tag_version` (`true`) | flutter-app | on `v*` tags, fail unless the tag (minus `v`) equals the `pubspec.yaml` version (minus `+build`) |
 | `gradle_task` (`assembleRelease`) | android-gradle-app | any Gradle task(s) |
-| `project_dir` (`.`) | android-gradle-app | dir containing `gradlew` |
+| `project_dir` (`.`) | flutter-app, desktop-app, android-gradle-app | dir containing `pubspec.yaml` (Flutter) or `gradlew` (Gradle); set it for monorepos, e.g. `app` |
 | `prebuild_script` (`''`) | android-gradle-app | shell run after checkout; empty = skip |
 | `prebuild_cache_path` (`''`) | android-gradle-app | path the script produces; empty = no cache |
 | `prebuild_cache_key` (`''`) | android-gradle-app | cache namespace (required with path) |

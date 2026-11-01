@@ -60,6 +60,11 @@ on:
         type: boolean
         required: false
         default: true
+      project_dir:
+        description: Directory containing pubspec.yaml (repo root for most apps; set for monorepos, e.g. app)
+        type: string
+        required: false
+        default: .
     secrets:
       ANDROID_KEYSTORE_BASE64:
         required: false
@@ -80,6 +85,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.project_dir }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -122,6 +130,9 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.project_dir }}
     permissions:
       contents: write
     env:
@@ -176,6 +187,8 @@ jobs:
           keystore_password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           key_alias: ${{ secrets.ANDROID_KEY_ALIAS }}
           key_password: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          keystore_file: ${{ inputs.project_dir }}/android/app/upload-keystore.jks
+          properties_file: ${{ inputs.project_dir }}/android/key.properties
 
       - name: Build APK
         env:
@@ -197,7 +210,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: apk
-          path: dist/*.apk
+          path: ${{ inputs.project_dir }}/dist/*.apk
           if-no-files-found: error
 
       - name: Publish GitHub release
