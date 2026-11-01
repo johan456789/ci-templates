@@ -134,9 +134,10 @@ Signing is **all-or-nothing**: if *any* signing secret is set, the keystore, key
 Create a keystore and the base64 secret:
 
 ```bash
-keytool -genkey -v -keystore upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload
-base64 -w0 upload-keystore.jks   # paste output into ANDROID_KEYSTORE_BASE64
+just jks-gen   # writes release-keystore.jks (alias: release), prints the base64 for ANDROID_KEYSTORE_BASE64
 ```
+
+Set `ANDROID_KEY_ALIAS` to the alias you generated with (`release` by default). Override with `just jks-gen file=my.jks alias=myalias`.
 
 ### Releases need write permission
 
