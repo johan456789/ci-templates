@@ -212,7 +212,7 @@ jobs:
           ls -lh dist/
 
       - name: Upload build artifact
-        if: inputs.upload_artifact || (inputs.publish_release && startsWith(github.ref, 'refs/tags/v'))
+        if: inputs.upload_artifact
         uses: actions/upload-artifact@v4
         with:
           name: apk
