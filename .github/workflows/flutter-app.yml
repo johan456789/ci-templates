@@ -94,7 +94,7 @@ jobs:
       run:
         working-directory: ${{ inputs.project_dir }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           lfs: ${{ inputs.lfs }}
 
@@ -145,7 +145,7 @@ jobs:
       # listing exactly what is missing. All four unset -> unsigned CI build.
       HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' || secrets.ANDROID_KEYSTORE_PASSWORD != '' || secrets.ANDROID_KEY_ALIAS != '' || secrets.ANDROID_KEY_PASSWORD != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           lfs: ${{ inputs.lfs }}
 
@@ -213,7 +213,7 @@ jobs:
 
       - name: Upload build artifact
         if: inputs.upload_artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: apk
           path: ${{ inputs.project_dir }}/dist/*.apk
