@@ -8,7 +8,7 @@ Reusable GitHub Actions workflows and composite actions for my apps — Flutter 
 ci-templates/
 ├── .github/workflows/
 │   ├── flutter-app.yml          # reusable: analyze + test + build APK + release
-│   ├── android-gradle-app.yml   # reusable: native Kotlin/Java Android apps
+│   ├── app-android.yml          # reusable: native Kotlin/Java Android apps (Gradle)
 │   └── desktop-app.yml          # reusable: Flutter desktop (linux/windows/macos matrix)
 └── actions/
     ├── setup-flutter/           # JDK + Flutter toolchain with caching
@@ -20,7 +20,7 @@ ci-templates/
 | Workflow | For | Does |
 |---|---|---|
 | `flutter-app.yml` | Flutter mobile | analyze + test on every call; builds release APK; attaches APKs to a GitHub Release on `v*` tags |
-| `android-gradle-app.yml` | Native Kotlin Android | runs a Gradle task (default `assembleRelease`), collects APK/AAB, publishes releases on `v*` tags |
+| `app-android.yml` | Native Kotlin Android | runs a Gradle task (default `assembleRelease`), collects APK/AAB, publishes releases on `v*` tags |
 | `desktop-app.yml` | Flutter desktop | matrix over `linux` / `windows` / `macos`, zips each bundle, publishes releases on `v*` tags |
 
 ## Quick start
@@ -61,7 +61,7 @@ Useful inputs:
 ```yaml
 jobs:
   android:
-    uses: johan456789/ci-templates/.github/workflows/android-gradle-app.yml@v1
+    uses: johan456789/ci-templates/.github/workflows/app-android.yml@v1
     with:
       gradle_task: assembleRelease
     secrets: inherit
@@ -106,13 +106,13 @@ jobs:
 | `analyze_args` (`''`) | flutter-app | extra args appended to `flutter analyze` |
 | `build_args` (`''`) | flutter-app | extra args appended to `flutter build apk --release` |
 | `check_tag_version` (`true`) | flutter-app | on `v*` tags, fail unless the tag (minus `v`) equals the `pubspec.yaml` version (minus `+build`) |
-| `gradle_task` (`assembleRelease`) | android-gradle-app | any Gradle task(s) |
-| `project_dir` (`.`) | flutter-app, desktop-app, android-gradle-app | dir containing `pubspec.yaml` (Flutter) or `gradlew` (Gradle); set it for monorepos, e.g. `app` |
-| `prebuild_script` (`''`) | android-gradle-app | shell run after checkout; empty = skip |
-| `prebuild_cache_path` (`''`) | android-gradle-app | path the script produces; empty = no cache |
-| `prebuild_cache_key` (`''`) | android-gradle-app | cache namespace (required with path) |
-| `prebuild_cache_hash_files` (`''`) | android-gradle-app | glob hashed into the key for auto-invalidation |
-| `properties_file` (`key.properties`) | android-gradle-app | where key.properties is written |
+| `gradle_task` (`assembleRelease`) | app-android | any Gradle task(s) |
+| `project_dir` (`.`) | flutter-app, desktop-app, app-android | dir containing `pubspec.yaml` (Flutter) or `gradlew` (Gradle); set it for monorepos, e.g. `app` |
+| `prebuild_script` (`''`) | app-android | shell run after checkout; empty = skip |
+| `prebuild_cache_path` (`''`) | app-android | path the script produces; empty = no cache |
+| `prebuild_cache_key` (`''`) | app-android | cache namespace (required with path) |
+| `prebuild_cache_hash_files` (`''`) | app-android | glob hashed into the key for auto-invalidation |
+| `properties_file` (`key.properties`) | app-android | where key.properties is written |
 | `platforms_json` (`'["linux"]'`) | desktop-app | JSON array subset of linux/windows/macos |
 | `publish_release` (`true`) | all | attach artifacts to a GitHub Release on `v*` tags |
 
