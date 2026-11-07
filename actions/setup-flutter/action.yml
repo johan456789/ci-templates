@@ -1,5 +1,5 @@
 name: Setup Flutter
-description: Installs JDK + Flutter toolchain with pub/gradle caching
+description: Installs the Flutter toolchain with pub caching, plus a JDK when java_version is set (Android builds only)
 
 inputs:
   flutter_version:
@@ -7,13 +7,15 @@ inputs:
     required: false
     default: ''
   java_version:
+    description: Temurin JDK version to install (empty = no JDK; only Android builds need one)
     required: false
-    default: '17'
+    default: ''
 
 runs:
   using: composite
   steps:
     - uses: actions/setup-java@v6
+      if: inputs.java_version != ''
       with:
         distribution: temurin
         java-version: ${{ inputs.java_version }}

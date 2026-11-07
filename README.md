@@ -7,21 +7,21 @@ Reusable GitHub Actions workflows and composite actions for my apps — Flutter 
 ```
 ci-templates/
 ├── .github/workflows/
-│   ├── flutter-app.yml          # reusable: analyze + test + build APK + release
-│   ├── app-android.yml          # reusable: native Kotlin/Java Android apps (Gradle)
-│   └── desktop-app.yml          # reusable: Flutter desktop (linux/windows/macos matrix)
+│   ├── app-flutter.yml          # reusable: Flutter apps (android/linux/windows/macos)
+│   └── app-android.yml          # reusable: native Kotlin/Java Android apps (Gradle)
 └── actions/
-    ├── setup-flutter/           # JDK + Flutter toolchain with caching
-    └── sign-android/            # decode keystore + write key.properties
+    ├── setup-flutter/           # Flutter toolchain with caching (+ JDK for Android)
+    ├── prepare-flutter/         # pub get, .env, prebuild hook, build_runner
+    ├── sign-android/            # decode keystore + write key.properties (skips if no secrets)
+    └── publish-release/         # create the tag's GitHub Release or add files to it
 ```
 
 ## Workflows
 
 | Workflow | For | Does |
 |---|---|---|
-| `flutter-app.yml` | Flutter mobile | analyze + test on every call; builds release APK; attaches APKs to a GitHub Release on `v*` tags |
+| `app-flutter.yml` | Flutter apps | analyze + test once; builds each platform in `platforms` (APK, linux tar.gz, windows/macos zip); one GitHub Release with every build on `v*` tags, only if everything passed |
 | `app-android.yml` | Native Kotlin Android | runs a Gradle task (default `assembleRelease`), collects APK/AAB, publishes releases on `v*` tags |
-| `desktop-app.yml` | Flutter desktop | matrix over `linux` / `windows` / `macos`, zips each bundle, publishes releases on `v*` tags |
 
 ## Quick start
 
@@ -39,7 +39,7 @@ on:
 
 jobs:
   flutter:
-    uses: johan456789/ci-templates/.github/workflows/flutter-app.yml@v1
+    uses: johan456789/ci-templates/.github/workflows/app-flutter.yml@v1
     secrets: inherit
 ```
 
@@ -47,14 +47,17 @@ Useful inputs:
 
 ```yaml
     with:
-      abi_splits: true          # split-per-ABI APKs instead of universal
+      platforms: '["android", "linux", "windows"]'  # default '["android"]'; "macos" also available
       lfs: true                 # fetch Git LFS files (fonts/assets) on checkout
-      build_args: --dart-define-from-file=.env  # extra flags for `flutter build apk`
       analyze_args: --no-fatal-infos            # extra flags for `flutter analyze`
       check_tag_version: false  # skip the v* tag == pubspec.yaml version check (default true)
-      publish_release: true     # attach APKs to release on v* tags (default true)
+      publish_release: true     # attach builds to release on v* tags (default true)
       flutter_version: '3.24.0' # pin if needed
+      android_abi_splits: true  # one APK per CPU architecture instead of universal
+      android_build_args: --dart-define-from-file=.env  # extra flags for `flutter build apk`
 ```
+
+Inputs that only affect one platform's build start with that platform (`android_*`).
 
 ### Native Kotlin Android app
 
@@ -84,36 +87,27 @@ repo. `prebuild_cache_hash_files` is hashed post-checkout (a caller-side
 `hashFiles()` in `with:` would evaluate before checkout and always miss).
 All four default to empty = hook skipped, so existing callers are unaffected.
 
-### Flutter desktop app
-
-```yaml
-jobs:
-  desktop:
-    uses: johan456789/ci-templates/.github/workflows/desktop-app.yml@v1
-    with:
-      platforms_json: '["linux", "windows"]'   # add "macos" if desired
-```
-
 ### All inputs (defaults in parentheses)
 
 | Input | Workflow | Values |
 |---|---|---|
-| `flutter_version` (`''`) | flutter-app, desktop-app | pinned Flutter version, empty = latest stable |
-| `java_version` (`17`) | all | Temurin JDK version |
-| `run_analyze` / `run_test` (`true`) | flutter-app | toggle analyze/test steps |
-| `abi_splits` (`false`) | flutter-app | split-per-ABI APKs instead of universal |
-| `lfs` (`false`) | flutter-app | fetch Git LFS files on checkout |
-| `analyze_args` (`''`) | flutter-app | extra args appended to `flutter analyze` |
-| `build_args` (`''`) | flutter-app | extra args appended to `flutter build apk --release` |
-| `check_tag_version` (`true`) | flutter-app | on `v*` tags, fail unless the tag (minus `v`) equals the `pubspec.yaml` version (minus `+build`) |
+| `platforms` (`'["android"]'`) | app-flutter | JSON array subset of android/linux/windows/macos |
+| `flutter_version` (`''`) | app-flutter | pinned Flutter version, empty = latest stable |
+| `java_version` (`17`) | app-android | Temurin JDK version |
+| `android_java_version` (`17`) | app-flutter | Temurin JDK version for the Android build |
+| `run_analyze` / `run_test` (`true`) | app-flutter | toggle analyze/test steps |
+| `android_abi_splits` (`false`) | app-flutter | split-per-ABI APKs instead of universal |
+| `lfs` (`false`) | app-flutter | fetch Git LFS files on checkout |
+| `analyze_args` (`''`) | app-flutter | extra args appended to `flutter analyze` |
+| `android_build_args` (`''`) | app-flutter | extra args appended to `flutter build apk --release` |
+| `check_tag_version` (`true`) | app-flutter | on `v*` tags, fail unless the tag (minus `v`) equals the `pubspec.yaml` version (minus `+build`) |
 | `gradle_task` (`assembleRelease`) | app-android | any Gradle task(s) |
-| `project_dir` (`.`) | flutter-app, desktop-app, app-android | dir containing `pubspec.yaml` (Flutter) or `gradlew` (Gradle); set it for monorepos, e.g. `app` |
+| `project_dir` (`.`) | all | dir containing `pubspec.yaml` (Flutter) or `gradlew` (Gradle); set it for monorepos, e.g. `app` |
 | `prebuild_script` (`''`) | app-android | shell run after checkout; empty = skip |
 | `prebuild_cache_path` (`''`) | app-android | path the script produces; empty = no cache |
 | `prebuild_cache_key` (`''`) | app-android | cache namespace (required with path) |
 | `prebuild_cache_hash_files` (`''`) | app-android | glob hashed into the key for auto-invalidation |
 | `properties_file` (`key.properties`) | app-android | where key.properties is written |
-| `platforms_json` (`'["linux"]'`) | desktop-app | JSON array subset of linux/windows/macos |
 | `publish_release` (`true`) | all | attach artifacts to a GitHub Release on `v*` tags |
 
 > Until this repo has a `v1` tag, callers must reference `@main` instead of `@v1`.
@@ -187,7 +181,7 @@ git tag v1.2.3 && git push origin v1.2.3
 - The tag becomes the release name; notes are auto-generated.
 - Flutter apps: the APK version comes from `pubspec.yaml`, and the build fails if the tag doesn't match it (`v1.2.3` needs `version: 1.2.3+N`). Bump `pubspec.yaml`, including `+N`, before tagging.
 - Built APKs are attached as release assets — point Obtainium at the repo's GitHub Releases and it picks up updates.
-- Obtainium installs **APKs only** (not AABs) — use `flutter-app.yml` or `assembleRelease`, not `bundleRelease`.
+- Obtainium installs **APKs only** (not AABs) — use `app-flutter.yml` or `assembleRelease`, not `bundleRelease`.
 - Private repos work in Obtainium since v0.14.11-beta but require each user to supply a PAT with read access.
 
 ## Versioning these templates
@@ -203,5 +197,5 @@ Never reference `@main` from app repos unless you want live-on-main changes ever
 ## Notes
 
 - All workflows run on `ubuntu-latest` by default — free for public repos (~300–500 Android builds/month within typical free quotas).
-- macOS desktop runners cost ~10x per-minute vs Linux; keep `"macos"` out of `platforms_json` unless needed.
+- macOS desktop runners cost ~10x per-minute vs Linux; keep `"macos"` out of `platforms` unless needed.
 - Reusable workflows referenced here resolve local actions (`./actions/...`) against **this** repo at the pinned ref — no cross-repo action config needed.
