@@ -115,7 +115,7 @@ The workflows sign automatically when these **repo secrets** exist in the app re
 | `ANDROID_KEY_ALIAS` | key alias |
 | `ANDROID_KEY_PASSWORD` | key password — **optional**; defaults to `ANDROID_KEYSTORE_PASSWORD` (correct for PKCS12 keystores, which is `keytool`'s default) |
 
-Signing is **all-or-nothing**: if *any* signing secret is set, the keystore, keystore password, and key alias are required (the key password is optional and reuses the keystore password when omitted) — a partial config fails the build with an error naming exactly which secret is missing. With none set, builds still succeed but produce an APK signed with the debug key (Flutter) or left unsigned (native Gradle projects without signing wiring) — fine for CI checks, but **not** shippable to Obtainium.
+Signing is **all-or-nothing**: if *any* signing secret is set, the keystore, keystore password, and key alias are required (the key password is optional and reuses the keystore password when omitted) — a partial config fails the build with an error naming exactly which secret is missing. With none set, PR and `main` builds still succeed but produce an APK signed with the debug key (Flutter) or left unsigned (native Gradle projects without signing wiring) — fine for CI checks (fork and Dependabot PRs never get secrets), but **not** shippable to Obtainium. Release builds (`v*` tags with `publish_release`) therefore **require** the signing secrets and fail without them, so an unshippable APK is never published.
 
 Create a keystore and the base64 secret:
 

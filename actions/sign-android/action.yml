@@ -1,5 +1,5 @@
 name: Sign Android
-description: Decodes a base64 keystore and writes key.properties for Gradle signing. Skips signing when no signing inputs are set.
+description: Decodes a base64 keystore and writes key.properties for Gradle signing. Skips signing when no signing inputs are set, unless required.
 
 inputs:
   keystore_base64:
@@ -24,6 +24,10 @@ inputs:
     description: Where to write key.properties (relative to workspace)
     required: false
     default: android/key.properties
+  required:
+    description: "'true' fails when no signing inputs are set instead of skipping. Set it for release builds so an unsigned or debug-signed APK is never published."
+    required: false
+    default: 'false'
 
 outputs:
   signed:
@@ -33,8 +37,9 @@ outputs:
 runs:
   using: composite
   steps:
-    # All inputs empty -> skip (unsigned CI build, e.g. fork PRs without secrets).
-    # Any input set -> signing is intended, so fail fast naming what is missing.
+    # All inputs empty -> skip (unsigned CI build, e.g. fork PRs without secrets),
+    # or fail when required (release builds). Any input set -> signing is
+    # intended, so fail fast naming what is missing.
     - name: Check signing inputs
       id: check
       shell: bash
@@ -43,8 +48,13 @@ runs:
         IN_KEYSTORE_PASSWORD: ${{ inputs.keystore_password }}
         IN_KEY_ALIAS: ${{ inputs.key_alias }}
         IN_KEY_PASSWORD: ${{ inputs.key_password }}
+        IN_REQUIRED: ${{ inputs.required }}
       run: |
         if [ -z "$IN_KEYSTORE_BASE64$IN_KEYSTORE_PASSWORD$IN_KEY_ALIAS$IN_KEY_PASSWORD" ]; then
+          if [ "$IN_REQUIRED" = true ]; then
+            echo "::error::Signing secrets are required for a release build (ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS) — refusing to publish an unsigned APK"
+            exit 1
+          fi
           echo "::notice::No Android signing secrets set — skipping signing (build is not shippable)"
           echo "signed=false" >> "$GITHUB_OUTPUT"
           exit 0

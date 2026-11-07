@@ -203,7 +203,7 @@ jobs:
           prebuild_script: ${{ inputs.prebuild_script }}
           run_build_runner: ${{ inputs.run_build_runner }}
 
-      # Skips itself when no signing secrets are set (unsigned CI build)
+      # No signing secrets: skips (unsigned CI build) or, on a release, fails
       - name: Configure Android signing
         uses: johan456789/ci-templates/actions/sign-android@main
         with:
@@ -213,6 +213,7 @@ jobs:
           key_password: ${{ secrets.ANDROID_KEY_PASSWORD }}
           keystore_file: ${{ inputs.project_dir }}/android/app/upload-keystore.jks
           properties_file: ${{ inputs.project_dir }}/android/key.properties
+          required: ${{ needs.prepare.outputs.release }}
 
       - name: Build APK
         env:
