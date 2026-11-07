@@ -1,0 +1,29 @@
+name: Publish release
+description: Uploads files to the GitHub release named after the current tag, creating the release if it doesn't exist yet
+
+inputs:
+  files:
+    description: Space-separated paths or globs to attach, e.g. dist/*
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Publish GitHub release
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        # Lets gh find the repo without a checkout (e.g. in a release-only job)
+        GH_REPO: ${{ github.repository }}
+        FILES: ${{ inputs.files }}
+      run: |
+        # Unquoted on purpose: expand the globs in FILES
+        # shellcheck disable=SC2086
+        set -- $FILES
+        ls -lh "$@"
+        # --clobber replaces a same-named asset, so re-running a release job works
+        if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+          gh release upload "$GITHUB_REF_NAME" "$@" --clobber
+        else
+          gh release create "$GITHUB_REF_NAME" "$@" --title "$GITHUB_REF_NAME" --generate-notes
+        fi
