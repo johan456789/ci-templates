@@ -1,0 +1,49 @@
+name: Prepare Flutter project
+description: Gets packages, writes .env, runs the prebuild hook and build_runner codegen
+
+inputs:
+  project_dir:
+    description: Directory containing pubspec.yaml (relative to workspace)
+    required: false
+    default: .
+  dotenv:
+    description: Full .env contents written to <project_dir>/.env (pass a secret; composite actions can't read secrets themselves). Empty = skipped.
+    required: false
+    default: ''
+  prebuild_script:
+    description: Shell command run after pub get, before codegen. Empty = skipped.
+    required: false
+    default: ''
+  run_build_runner:
+    description: Run `dart run build_runner build` (for codegen projects like envied)
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      working-directory: ${{ inputs.project_dir }}
+      run: flutter pub get
+
+    - name: Write .env
+      shell: bash
+      working-directory: ${{ inputs.project_dir }}
+      env:
+        DOTENV: ${{ inputs.dotenv }}
+      run: |
+        if [ -n "$DOTENV" ]; then
+          echo "$DOTENV" > .env
+        fi
+
+    - name: Run prebuild script
+      if: inputs.prebuild_script != ''
+      shell: bash
+      working-directory: ${{ inputs.project_dir }}
+      run: ${{ inputs.prebuild_script }}
+
+    - name: Generate code
+      if: inputs.run_build_runner == 'true'
+      shell: bash
+      working-directory: ${{ inputs.project_dir }}
+      run: dart run build_runner build --delete-conflicting-outputs

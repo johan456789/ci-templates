@@ -1,9 +1,10 @@
-name: Android app (Gradle)
+name: Android app
 
 on:
   workflow_call:
     inputs:
       java_version:
+        description: Temurin JDK version
         type: string
         required: false
         default: '17'
@@ -77,9 +78,8 @@ jobs:
     permissions:
       contents: write
     env:
-      # Any signing secret present -> attempt signing; sign-android fails fast
-      # listing exactly what is missing. All four unset -> unsigned CI build.
-      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' || secrets.ANDROID_KEYSTORE_PASSWORD != '' || secrets.ANDROID_KEY_ALIAS != '' || secrets.ANDROID_KEY_PASSWORD != '' }}
+      # Decided once: gates both mandatory signing and the release step
+      RELEASE: ${{ inputs.publish_release && startsWith(github.ref, 'refs/tags/v') }}
     steps:
       - uses: actions/checkout@v7
 
@@ -128,8 +128,8 @@ jobs:
         if: inputs.prebuild_script != '' && (inputs.prebuild_cache_path == '' || steps.prebuild-cache.outputs.cache-hit != 'true')
         run: ${{ inputs.prebuild_script }}
 
+      # No signing secrets: skips (unsigned CI build) or, on a release, fails
       - name: Configure Android signing
-        if: env.HAS_KEYSTORE == 'true'
         uses: johan456789/ci-templates/actions/sign-android@main
         with:
           keystore_base64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -138,6 +138,7 @@ jobs:
           key_password: ${{ secrets.ANDROID_KEY_PASSWORD }}
           keystore_file: ${{ inputs.keystore_file }}
           properties_file: ${{ inputs.properties_file }}
+          required: ${{ env.RELEASE }}
 
       - name: Build
         env:
@@ -161,12 +162,7 @@ jobs:
           retention-days: 3
 
       - name: Publish GitHub release
-        if: inputs.publish_release && startsWith(github.ref, 'refs/tags/v')
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
-          else
-            gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes
-          fi
+        if: env.RELEASE == 'true'
+        uses: johan456789/ci-templates/actions/publish-release@main
+        with:
+          files: dist/*
