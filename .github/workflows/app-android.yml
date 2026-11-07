@@ -4,6 +4,7 @@ on:
   workflow_call:
     inputs:
       java_version:
+        description: Temurin JDK version
         type: string
         required: false
         default: '17'

@@ -16,6 +16,16 @@ ci-templates/
     └── publish-release/         # create the tag's GitHub Release or add files to it
 ```
 
+## Naming
+
+- **Reusable workflows:** `<kind>-<project-type>.yml`
+  - kind = what sort of repo calls it: `app` (more later, e.g. `lib` for packages, `repo` for housekeeping)
+  - project-type = what the caller would call their project: `flutter`, `android` (native Gradle), …
+  - One workflow per project type. The platforms it builds for are an input, not part of the name.
+  - The workflow's `name:` reads the same way: `Flutter app`, `Android app`.
+- **Workflow inputs:** an input that only one platform's build uses starts with that platform (`android_build_args`). Inputs without a prefix apply to every platform.
+- **Composite actions:** `actions/<verb>-<noun>/` (`setup-flutter`, `sign-android`, `publish-release`). Verbs for actions and nouns for workflows keep the two easy to tell apart.
+
 ## Workflows
 
 | Workflow | For | Does |
@@ -87,30 +97,12 @@ repo. `prebuild_cache_hash_files` is hashed post-checkout (a caller-side
 `hashFiles()` in `with:` would evaluate before checkout and always miss).
 All four default to empty = hook skipped, so existing callers are unaffected.
 
-### All inputs (defaults in parentheses)
+### All inputs
 
-| Input | Workflow | Values |
-|---|---|---|
-| `platforms` (`'["android"]'`) | app-flutter | JSON array subset of android/linux/windows/macos |
-| `flutter_version` (`''`) | app-flutter | pinned Flutter version, empty = latest stable |
-| `java_version` (`17`) | app-android | Temurin JDK version |
-| `android_java_version` (`17`) | app-flutter | Temurin JDK version for the Android build |
-| `run_analyze` / `run_test` (`true`) | app-flutter | toggle analyze/test steps |
-| `android_abi_splits` (`false`) | app-flutter | split-per-ABI APKs instead of universal |
-| `lfs` (`false`) | app-flutter | fetch Git LFS files on checkout |
-| `analyze_args` (`''`) | app-flutter | extra args appended to `flutter analyze` |
-| `android_build_args` (`''`) | app-flutter | extra args appended to `flutter build apk --release` |
-| `check_tag_version` (`true`) | app-flutter | on `v*` tags, fail unless the tag (minus `v`) equals the `pubspec.yaml` version (minus `+build`) |
-| `gradle_task` (`assembleRelease`) | app-android | any Gradle task(s) |
-| `project_dir` (`.`) | all | dir containing `pubspec.yaml` (Flutter) or `gradlew` (Gradle); set it for monorepos, e.g. `app` |
-| `prebuild_script` (`''`) | app-android | shell run after checkout; empty = skip |
-| `prebuild_cache_path` (`''`) | app-android | path the script produces; empty = no cache |
-| `prebuild_cache_key` (`''`) | app-android | cache namespace (required with path) |
-| `prebuild_cache_hash_files` (`''`) | app-android | glob hashed into the key for auto-invalidation |
-| `properties_file` (`key.properties`) | app-android | where key.properties is written |
-| `publish_release` (`true`) | all | attach artifacts to a GitHub Release on `v*` tags |
+Each workflow declares every input with its default and a description at the top of the file. That is the reference:
 
-> Until this repo has a `v1` tag, callers must reference `@main` instead of `@v1`.
+- [`app-flutter.yml`](.github/workflows/app-flutter.yml)
+- [`app-android.yml`](.github/workflows/app-android.yml)
 
 ## Android signing
 
@@ -198,4 +190,4 @@ Never reference `@main` from app repos unless you want live-on-main changes ever
 
 - All workflows run on `ubuntu-latest` by default — free for public repos (~300–500 Android builds/month within typical free quotas).
 - macOS desktop runners cost ~10x per-minute vs Linux; keep `"macos"` out of `platforms` unless needed.
-- Reusable workflows referenced here resolve local actions (`./actions/...`) against **this** repo at the pinned ref — no cross-repo action config needed.
+- The workflows call this repo's actions by full path (`johan456789/ci-templates/actions/<name>@main`), not `./actions/...`: inside a reusable workflow, `./` resolves against the *caller's* checkout. So a caller pinned to `@v1` still runs the actions from `main`; pin those refs too when cutting a tag.
