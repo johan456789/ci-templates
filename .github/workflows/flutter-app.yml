@@ -103,23 +103,12 @@ jobs:
           flutter_version: ${{ inputs.flutter_version }}
           java_version: ${{ inputs.java_version }}
 
-      - run: flutter pub get
-
-      - name: Write .env
-        env:
-          DOTENV: ${{ secrets.DOTENV }}
-        run: |
-          if [ -n "$DOTENV" ]; then
-            echo "$DOTENV" > .env
-          fi
-
-      - name: Run prebuild script
-        if: inputs.prebuild_script != ''
-        run: ${{ inputs.prebuild_script }}
-
-      - name: Generate code
-        if: inputs.run_build_runner
-        run: dart run build_runner build --delete-conflicting-outputs
+      - uses: johan456789/ci-templates/actions/prepare-flutter@main
+        with:
+          project_dir: ${{ inputs.project_dir }}
+          dotenv: ${{ secrets.DOTENV }}
+          prebuild_script: ${{ inputs.prebuild_script }}
+          run_build_runner: ${{ inputs.run_build_runner }}
 
       - name: Analyze
         if: inputs.run_analyze
@@ -162,23 +151,12 @@ jobs:
           flutter_version: ${{ inputs.flutter_version }}
           java_version: ${{ inputs.java_version }}
 
-      - run: flutter pub get
-
-      - name: Write .env
-        env:
-          DOTENV: ${{ secrets.DOTENV }}
-        run: |
-          if [ -n "$DOTENV" ]; then
-            echo "$DOTENV" > .env
-          fi
-
-      - name: Run prebuild script
-        if: inputs.prebuild_script != ''
-        run: ${{ inputs.prebuild_script }}
-
-      - name: Generate code
-        if: inputs.run_build_runner
-        run: dart run build_runner build --delete-conflicting-outputs
+      - uses: johan456789/ci-templates/actions/prepare-flutter@main
+        with:
+          project_dir: ${{ inputs.project_dir }}
+          dotenv: ${{ secrets.DOTENV }}
+          prebuild_script: ${{ inputs.prebuild_script }}
+          run_build_runner: ${{ inputs.run_build_runner }}
 
       # Skips itself when no signing secrets are set (unsigned CI build)
       - name: Configure Android signing
