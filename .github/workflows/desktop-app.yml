@@ -41,7 +41,7 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     outputs:
-      platforms: ${{ steps.set-platforms.outputs.platforms }}
+      matrix: ${{ steps.set-platforms.outputs.matrix }}
     steps:
       - id: set-platforms
         env:
@@ -51,21 +51,16 @@ jobs:
             echo "::error::platforms_json must be a JSON array with values from: linux, windows, macos (got: $PLATFORMS_JSON)"
             exit 1
           fi
-          echo "platforms=$(jq -c 'unique' <<<"$PLATFORMS_JSON")" >> "$GITHUB_OUTPUT"
+          # Build the matrix as explicit {platform, os} pairs. A static include list
+          # would ADD every unmatched entry as a new job, building all three OSes.
+          echo "matrix=$(jq -c 'unique | map({platform: ., os: {linux: "ubuntu-latest", windows: "windows-latest", macos: "macos-latest"}[.]})' <<<"$PLATFORMS_JSON")" >> "$GITHUB_OUTPUT"
 
   build:
     needs: prepare
     strategy:
       fail-fast: false
       matrix:
-        platform: ${{ fromJSON(needs.prepare.outputs.platforms) }}
-        include:
-          - platform: linux
-            os: ubuntu-latest
-          - platform: windows
-            os: windows-latest
-          - platform: macos
-            os: macos-latest
+        include: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     defaults:
       run:
