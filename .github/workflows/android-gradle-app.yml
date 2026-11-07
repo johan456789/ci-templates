@@ -76,10 +76,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      # Any signing secret present -> attempt signing; sign-android fails fast
-      # listing exactly what is missing. All four unset -> unsigned CI build.
-      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' || secrets.ANDROID_KEYSTORE_PASSWORD != '' || secrets.ANDROID_KEY_ALIAS != '' || secrets.ANDROID_KEY_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@v7
 
@@ -128,8 +124,8 @@ jobs:
         if: inputs.prebuild_script != '' && (inputs.prebuild_cache_path == '' || steps.prebuild-cache.outputs.cache-hit != 'true')
         run: ${{ inputs.prebuild_script }}
 
+      # Skips itself when no signing secrets are set (unsigned CI build)
       - name: Configure Android signing
-        if: env.HAS_KEYSTORE == 'true'
         uses: johan456789/ci-templates/actions/sign-android@main
         with:
           keystore_base64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}

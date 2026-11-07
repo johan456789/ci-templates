@@ -140,10 +140,6 @@ jobs:
         working-directory: ${{ inputs.project_dir }}
     permissions:
       contents: write
-    env:
-      # Any signing secret present -> attempt signing; sign-android fails fast
-      # listing exactly what is missing. All four unset -> unsigned CI build.
-      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' || secrets.ANDROID_KEYSTORE_PASSWORD != '' || secrets.ANDROID_KEY_ALIAS != '' || secrets.ANDROID_KEY_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -184,8 +180,8 @@ jobs:
         if: inputs.run_build_runner
         run: dart run build_runner build --delete-conflicting-outputs
 
+      # Skips itself when no signing secrets are set (unsigned CI build)
       - name: Configure Android signing
-        if: env.HAS_KEYSTORE == 'true'
         uses: johan456789/ci-templates/actions/sign-android@main
         with:
           keystore_base64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}

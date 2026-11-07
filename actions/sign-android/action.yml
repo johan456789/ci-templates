@@ -1,14 +1,17 @@
 name: Sign Android
-description: Decodes a base64 keystore and writes key.properties for Gradle signing
+description: Decodes a base64 keystore and writes key.properties for Gradle signing. Skips signing when no signing inputs are set.
 
 inputs:
   keystore_base64:
     description: Base64-encoded .jks keystore file
-    required: true
+    required: false
+    default: ''
   keystore_password:
-    required: true
+    required: false
+    default: ''
   key_alias:
-    required: true
+    required: false
+    default: ''
   key_password:
     description: Key password. Optional — defaults to keystore_password (correct for PKCS12 keystores, which is keytool's default)
     required: false
@@ -22,10 +25,18 @@ inputs:
     required: false
     default: android/key.properties
 
+outputs:
+  signed:
+    description: "'true' when a keystore was configured, 'false' when signing was skipped"
+    value: ${{ steps.check.outputs.signed }}
+
 runs:
   using: composite
   steps:
-    - name: Validate signing inputs
+    # All inputs empty -> skip (unsigned CI build, e.g. fork PRs without secrets).
+    # Any input set -> signing is intended, so fail fast naming what is missing.
+    - name: Check signing inputs
+      id: check
       shell: bash
       env:
         IN_KEYSTORE_BASE64: ${{ inputs.keystore_base64 }}
@@ -33,6 +44,11 @@ runs:
         IN_KEY_ALIAS: ${{ inputs.key_alias }}
         IN_KEY_PASSWORD: ${{ inputs.key_password }}
       run: |
+        if [ -z "$IN_KEYSTORE_BASE64$IN_KEYSTORE_PASSWORD$IN_KEY_ALIAS$IN_KEY_PASSWORD" ]; then
+          echo "::notice::No Android signing secrets set — skipping signing (build is not shippable)"
+          echo "signed=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
         missing=""
         [ -z "$IN_KEYSTORE_BASE64" ] && missing="$missing keystore_base64"
         [ -z "$IN_KEYSTORE_PASSWORD" ] && missing="$missing keystore_password"
@@ -41,8 +57,10 @@ runs:
           echo "::error::sign-android is missing required inputs:$missing — check the repo secrets"
           exit 1
         fi
+        echo "signed=true" >> "$GITHUB_OUTPUT"
 
     - name: Decode keystore
+      if: steps.check.outputs.signed == 'true'
       shell: bash
       env:
         IN_KEYSTORE_BASE64: ${{ inputs.keystore_base64 }}
@@ -52,6 +70,7 @@ runs:
         echo "$IN_KEYSTORE_BASE64" | base64 -d > "${{ github.workspace }}/$IN_KEYSTORE_FILE"
 
     - name: Write key.properties
+      if: steps.check.outputs.signed == 'true'
       shell: bash
       env:
         STORE_FILE: ${{ github.workspace }}/${{ inputs.keystore_file }}
