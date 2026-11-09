@@ -49,17 +49,20 @@ on:
         required: false
         default: false
     # Keep these in the app repo's `release` environment, not as repo secrets:
-    # GitHub then hands them only to the release job, on v* tags. A job that
-    # declares `environment:` uses that environment's secrets over whatever the
-    # caller passes, so callers pass none.
+    # GitHub then fills them in only for the release job, on v* tags. The
+    # caller must still pass them by name, or they resolve to empty here.
+    # required: true catches a caller that forgets, on its first run instead of
+    # its first tag. It only checks that the caller passes them, not that they
+    # have a value, so PR builds still work.
     secrets:
       ANDROID_KEYSTORE_BASE64:
-        required: false
+        required: true
       ANDROID_KEYSTORE_PASSWORD:
-        required: false
+        required: true
       ANDROID_KEY_ALIAS:
-        required: false
+        required: true
       ANDROID_KEY_PASSWORD:
+        description: Optional; defaults to ANDROID_KEYSTORE_PASSWORD
         required: false
 
 # NOTE: no concurrency here on purpose. In a called workflow github.workflow is the

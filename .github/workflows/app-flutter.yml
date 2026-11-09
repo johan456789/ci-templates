@@ -79,9 +79,9 @@ on:
         required: false
         default: ''
     # Keep the ANDROID_* secrets in the app repo's `release` environment, not as
-    # repo secrets: GitHub then hands them only to the release job, on v* tags.
-    # A job that declares `environment:` uses that environment's secrets over
-    # whatever the caller passes, so callers only pass DOTENV.
+    # repo secrets: GitHub then fills them in only for the release job, on v*
+    # tags. The caller must still pass them by name, or they resolve to empty
+    # here. Not required: desktop-only apps have no signing key.
     secrets:
       ANDROID_KEYSTORE_BASE64:
         required: false

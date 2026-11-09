@@ -54,9 +54,13 @@ jobs:
     uses: johan456789/ci-templates/.github/workflows/app-flutter.yml@v1
     secrets:
       DOTENV: ${{ secrets.DOTENV }}  # only if the app uses a .env; drop otherwise
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}  # optional
 ```
 
-Pass only the secrets the workflow needs rather than `secrets: inherit`. The signing secrets aren't passed at all: they live in the `release` environment (see [Android signing](#android-signing)).
+Pass the secrets by name rather than `secrets: inherit`, so the workflow gets only what it needs. The `ANDROID_*` ones live in the `release` environment (see [Android signing](#android-signing)); passing them doesn't expose them to the build jobs. Desktop-only apps can drop them.
 
 Useful inputs:
 
@@ -84,9 +88,14 @@ jobs:
     uses: johan456789/ci-templates/.github/workflows/app-android.yml@v1
     with:
       gradle_task: assembleRelease
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}  # optional
 ```
 
-No `secrets:` needed: the signing secrets come from the `release` environment.
+`app-android` requires the first three, so a caller that forgets them fails on its first run rather than its first release.
 
 Repos that aren't build-ready after checkout (e.g. a gitignored native
 library compiled by a repo script) can hook in setup without forking the
@@ -133,6 +142,8 @@ The signing key never reaches a job that builds the app. Build jobs run project 
 5. Optional: a tag ruleset (**Settings → Rules → Rulesets**, target `v*` tags, restrict creations) so only you can create `v*` tags.
 
 GitHub then hands those secrets only to jobs that declare `environment: release` **and** run on a `v*` tag. GitHub enforces that, not the workflow YAML, so someone who can push a branch can't add a workflow that prints them. Repo-level secrets offer no such protection.
+
+The calling workflow must still pass them by name (see [Quick start](#quick-start)); a reusable workflow gets an empty value for any secret the caller doesn't pass, even an environment secret. Passing them only lets the workflow use them: the build jobs don't declare the environment, so they still get nothing.
 
 Release builds fail if the signing secrets are missing, so an unsigned or debug-signed APK is never published. PR and `main` builds never sign and are just compile checks.
 

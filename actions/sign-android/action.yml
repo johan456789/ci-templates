@@ -35,7 +35,7 @@ runs:
         [ -z "$IN_KEYSTORE_PASSWORD" ] && missing="$missing ANDROID_KEYSTORE_PASSWORD"
         [ -z "$IN_KEY_ALIAS" ] && missing="$missing ANDROID_KEY_ALIAS"
         if [ -n "$missing" ]; then
-          echo "::error::Release signing is missing:$missing. Add them as secrets of the 'release' environment (Settings → Environments → release) — refusing to publish an unsigned APK"
+          echo "::error::Release signing is missing:$missing. Add them as secrets of the 'release' environment (Settings → Environments → release) and check that the calling workflow passes them under secrets: — refusing to publish an unsigned APK"
           exit 1
         fi
 
