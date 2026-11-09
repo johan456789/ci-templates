@@ -12,7 +12,7 @@ ci-templates/
 └── actions/
     ├── setup-flutter/           # Flutter toolchain with caching (+ JDK for Android)
     ├── prepare-flutter/         # pub get, .env, prebuild hook, build_runner
-    ├── sign-android/            # decode keystore + write key.properties (skips if no secrets)
+    ├── sign-android/            # sign built APKs/AABs with the release key (release job only)
     └── publish-release/         # create the tag's GitHub Release or add files to it
 ```
 
@@ -30,8 +30,8 @@ ci-templates/
 
 | Workflow | For | Does |
 |---|---|---|
-| `app-flutter.yml` | Flutter apps | analyze + test once; builds each platform in `platforms` (APK, linux tar.gz, windows/macos zip); one GitHub Release with every build on `v*` tags, only if everything passed |
-| `app-android.yml` | Native Kotlin Android | runs a Gradle task (default `assembleRelease`), collects APK/AAB, publishes releases on `v*` tags |
+| `app-flutter.yml` | Flutter apps | analyze + test once; builds each platform in `platforms` (APK, linux tar.gz, windows/macos zip); on `v*` tags, signs the APKs and publishes one GitHub Release with every build, only if everything passed |
+| `app-android.yml` | Native Kotlin Android | runs a Gradle task (default `assembleRelease`), collects APK/AAB; on `v*` tags, signs them and publishes a release |
 
 ## Quick start
 
@@ -49,9 +49,18 @@ on:
 
 jobs:
   flutter:
+    permissions:
+      contents: write  # for the release job; see "Releases need write permission"
     uses: johan456789/ci-templates/.github/workflows/app-flutter.yml@v1
-    secrets: inherit
+    secrets:
+      DOTENV: ${{ secrets.DOTENV }}  # only if the app uses a .env; drop otherwise
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}  # optional
 ```
+
+Pass the secrets by name rather than `secrets: inherit`, so the workflow gets only what it needs. The `ANDROID_*` ones live in the `release` environment (see [Android signing](#android-signing)); passing them doesn't expose them to the build jobs. Desktop-only apps can drop them.
 
 Useful inputs:
 
@@ -74,11 +83,19 @@ Inputs that only affect one platform's build start with that platform (`android_
 ```yaml
 jobs:
   android:
+    permissions:
+      contents: write
     uses: johan456789/ci-templates/.github/workflows/app-android.yml@v1
     with:
       gradle_task: assembleRelease
-    secrets: inherit
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}  # optional
 ```
+
+`app-android` requires the first three, so a caller that forgets them fails on its first run rather than its first release.
 
 Repos that aren't build-ready after checkout (e.g. a gitignored native
 library compiled by a repo script) can hook in setup without forking the
@@ -106,16 +123,29 @@ Each workflow declares every input with its default and a description at the top
 
 ## Android signing
 
-The workflows sign automatically when these **repo secrets** exist in the app repo (pass them via `secrets: inherit`):
+The signing key never reaches a job that builds the app. Build jobs run project code, Gradle plugins, `build_runner`, the prebuild script and every dependency, so they produce unsigned or debug-signed APKs. Only the `release` job, which runs on `v*` tags and runs no project code, gets the key: it downloads the builds, signs them with `apksigner` (APKs) or `jarsigner` (AABs), and publishes.
 
-| Secret | Description |
-|---|---|
-| `ANDROID_KEYSTORE_BASE64` | base64-encoded `.jks` keystore |
-| `ANDROID_KEYSTORE_PASSWORD` | keystore password |
-| `ANDROID_KEY_ALIAS` | key alias |
-| `ANDROID_KEY_PASSWORD` | key password — **optional**; defaults to `ANDROID_KEYSTORE_PASSWORD` (correct for PKCS12 keystores, which is `keytool`'s default) |
+### Set up the `release` environment (each app repo)
 
-Signing is **all-or-nothing**: if *any* signing secret is set, the keystore, keystore password, and key alias are required (the key password is optional and reuses the keystore password when omitted) — a partial config fails the build with an error naming exactly which secret is missing. With none set, PR and `main` builds still succeed but produce an APK signed with the debug key (Flutter) or left unsigned (native Gradle projects without signing wiring) — fine for CI checks (fork and Dependabot PRs never get secrets), but **not** shippable to Obtainium. Release builds (`v*` tags with `publish_release`) therefore **require** the signing secrets and fail without them, so an unshippable APK is never published.
+1. **Settings → Environments → New environment**, name it `release`.
+2. **Deployment branches and tags → Selected branches and tags → Add rule**, type **Tag**, pattern `v*`.
+3. Add the signing secrets as **environment secrets**:
+
+   | Secret | Description |
+   |---|---|
+   | `ANDROID_KEYSTORE_BASE64` | base64-encoded `.jks` keystore |
+   | `ANDROID_KEYSTORE_PASSWORD` | keystore password |
+   | `ANDROID_KEY_ALIAS` | key alias |
+   | `ANDROID_KEY_PASSWORD` | key password — **optional**; defaults to `ANDROID_KEYSTORE_PASSWORD` (correct for PKCS12 keystores, which is `keytool`'s default) |
+
+4. Delete any repo-level copies of those secrets (**Settings → Secrets and variables → Actions**).
+5. Optional: a tag ruleset (**Settings → Rules → Rulesets**, target `v*` tags, restrict creations) so only you can create `v*` tags.
+
+GitHub then hands those secrets only to jobs that declare `environment: release` **and** run on a `v*` tag. GitHub enforces that, not the workflow YAML, so someone who can push a branch can't add a workflow that prints them. Repo-level secrets offer no such protection.
+
+The calling workflow must still pass them by name (see [Quick start](#quick-start)); a reusable workflow gets an empty value for any secret the caller doesn't pass, even an environment secret. Passing them only lets the workflow use them: the build jobs don't declare the environment, so they still get nothing.
+
+Release builds fail if the signing secrets are missing, so an unsigned or debug-signed APK is never published. PR and `main` builds never sign and are just compile checks.
 
 Create a keystore and the base64 secret:
 
@@ -125,42 +155,30 @@ just jks-gen   # writes release-keystore.jks (alias: release), prints the base64
 
 Set `ANDROID_KEY_ALIAS` to the alias you generated with (`release` by default). Override with `just jks-gen file=my.jks alias=myalias`.
 
+### No Gradle signing wiring
+
+Apps don't need a `key.properties` signing config any more; remove it if you added one. Leave release builds on Flutter's default (`signingConfig = signingConfigs.getByName("debug")`) or, for native apps, with no signing config (Gradle writes `app-release-unsigned.apk`; the `-unsigned` suffix is dropped when signed). `apksigner` replaces the debug signature.
+
+### Other guards
+
+- The workflows fail immediately when called from `pull_request_target`, which runs with the repo's secrets and is how outsider PR code usually gets hold of them. Use `pull_request`; GitHub already withholds secrets from fork and Dependabot PRs.
+- `DOTENV` is a **repo secret**, not a `release` environment secret, because every build (PRs and `main` too) needs it. It's stored as a secret to keep it out of git, but its values are compiled into the APK and can be extracted, so don't put real secrets in it.
+
 ### Releases need write permission
 
-The release steps create GitHub Releases with `GITHUB_TOKEN`. If your repo or org defaults workflow tokens to read-only, allow **Settings → Actions → General → Workflow permissions → Read and write**, or the release job fails.
+The release job creates GitHub Releases with `GITHUB_TOKEN`, so it needs `contents: write`. A called workflow can't get more than its caller grants, so grant it on the calling job instead of switching the whole repo to **Read and write** in Settings:
 
-### Gradle wiring
-
-`sign-android` writes `storeFile` as an absolute path plus the passwords into `key.properties` (next to your Gradle project). Your `android/app/build.gradle.kts` must read it:
-
-```kotlin
-import java.util.Properties
-import java.io.FileInputStream
-
-val keystoreProperties = Properties()
-val keystorePropertiesFile = rootProject.file("key.properties")
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-}
-
-android {
-    signingConfigs {
-        create("release") {
-            keyAlias = keystoreProperties["keyAlias"] as String?
-            keyPassword = keystoreProperties["keyPassword"] as String?
-            storeFile = keystoreProperties["storeFile"]?.let { file(it) }
-            storePassword = keystoreProperties["storePassword"] as String?
-        }
-    }
-    buildTypes {
-        release {
-            signingConfig = signingConfigs.getByName("release")
-        }
-    }
-}
+```yaml
+jobs:
+  flutter:
+    permissions:
+      contents: write
+    uses: johan456789/ci-templates/.github/workflows/app-flutter.yml@v1
 ```
 
-Recent Flutter templates ship most of this already — just make sure it's present.
+Without it, a repo whose default token is read-only fails at startup (`startup_failure`): the called workflow asks for more than the caller grants. Callers with `publish_release: false` can grant `contents: read` instead.
+
+Only the release job uses the write grant. The workflows set `contents: read` for every other job, since those run project code and dependencies.
 
 ## Releases & Obtainium
 

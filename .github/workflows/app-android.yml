@@ -18,16 +18,6 @@ on:
         type: string
         required: false
         default: .
-      properties_file:
-        description: Where key.properties is written (relative to repo root)
-        type: string
-        required: false
-        default: key.properties
-      keystore_file:
-        description: Where the decoded keystore is written (relative to repo root)
-        type: string
-        required: false
-        default: upload-keystore.jks
       prebuild_script:
         description: Shell command run after checkout (e.g. ./build_native_dep.sh). Empty = skip.
         type: string
@@ -49,38 +39,57 @@ on:
         required: false
         default: ''
       publish_release:
-        description: Attach APK/AAB to a GitHub release when triggered by a v* tag
+        description: Sign the APK/AAB and attach it to a GitHub release when triggered by a v* tag
         type: boolean
         required: false
         default: true
       upload_artifact:
-        description: Keep the built APK/AAB as a downloadable workflow artifact (for sideloading a PR or main build from the run page). Off by default because artifacts count against the account storage quota. Tagged releases always upload.
+        description: Keep the built (unsigned) APK/AAB as a downloadable workflow artifact (for inspecting a PR or main build from the run page). Off by default because artifacts count against the account storage quota. Tagged releases always upload, since the release job needs them.
         type: boolean
         required: false
         default: false
+    # Keep these in the app repo's `release` environment, not as repo secrets:
+    # GitHub then fills them in only for the release job, on v* tags. The
+    # caller must still pass them by name, or they resolve to empty here.
+    # required: true catches a caller that forgets, on its first run instead of
+    # its first tag. It only checks that the caller passes them, not that they
+    # have a value, so PR builds still work.
     secrets:
       ANDROID_KEYSTORE_BASE64:
-        required: false
+        required: true
       ANDROID_KEYSTORE_PASSWORD:
-        required: false
+        required: true
       ANDROID_KEY_ALIAS:
-        required: false
+        required: true
       ANDROID_KEY_PASSWORD:
+        description: Optional; defaults to ANDROID_KEYSTORE_PASSWORD
         required: false
 
 # NOTE: no concurrency here on purpose. In a called workflow github.workflow is the
 # CALLER's name, so a fixed group would collide when one caller invokes multiple
 # templates. Set concurrency in your app repo's thin workflow instead.
 
+# Read-only by default: every job but release runs project code and
+# dependencies. Without this, those jobs get whatever the caller grants.
+permissions:
+  contents: read
+
 jobs:
+  # Runs project code and dependencies, so it never sees the signing key and
+  # produces an unsigned (or debug-signed) build. The release job signs it.
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     env:
-      # Decided once: gates both mandatory signing and the release step
       RELEASE: ${{ inputs.publish_release && startsWith(github.ref, 'refs/tags/v') }}
     steps:
+      # pull_request_target runs with the base repo's secrets and a write token,
+      # and is how outsider PR code usually gets hold of them
+      - name: Refuse pull_request_target
+        if: github.event_name == 'pull_request_target'
+        run: |
+          echo "::error::Don't call this workflow from pull_request_target: it runs with secrets. Use pull_request instead."
+          exit 1
+
       - uses: actions/checkout@v7
 
       # Validate the gradle-wrapper.jar against official Gradle checksums. This
@@ -128,18 +137,6 @@ jobs:
         if: inputs.prebuild_script != '' && (inputs.prebuild_cache_path == '' || steps.prebuild-cache.outputs.cache-hit != 'true')
         run: ${{ inputs.prebuild_script }}
 
-      # No signing secrets: skips (unsigned CI build) or, on a release, fails
-      - name: Configure Android signing
-        uses: johan456789/ci-templates/actions/sign-android@main
-        with:
-          keystore_base64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          keystore_password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          key_alias: ${{ secrets.ANDROID_KEY_ALIAS }}
-          key_password: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          keystore_file: ${{ inputs.keystore_file }}
-          properties_file: ${{ inputs.properties_file }}
-          required: ${{ env.RELEASE }}
-
       - name: Build
         env:
           GRADLE_TASK: ${{ inputs.gradle_task }}
@@ -153,7 +150,7 @@ jobs:
           ls -lh dist/
 
       - name: Upload build artifact
-        if: inputs.upload_artifact
+        if: inputs.upload_artifact || env.RELEASE == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: android-build
@@ -161,8 +158,30 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-      - name: Publish GitHub release
-        if: env.RELEASE == 'true'
-        uses: johan456789/ci-templates/actions/publish-release@main
+  # The only job that sees the signing key, so it runs no project code: it
+  # downloads the build, signs it and publishes.
+  release:
+    needs: build
+    if: inputs.publish_release && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: android-build
+          path: dist
+
+      - name: Sign APK/AAB
+        uses: johan456789/ci-templates/actions/sign-android@main
+        with:
+          files: dist/*.apk dist/*.aab
+          keystore_base64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          keystore_password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          key_alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          key_password: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - uses: johan456789/ci-templates/actions/publish-release@main
         with:
           files: dist/*

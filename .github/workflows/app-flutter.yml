@@ -78,6 +78,10 @@ on:
         type: string
         required: false
         default: ''
+    # Keep the ANDROID_* secrets in the app repo's `release` environment, not as
+    # repo secrets: GitHub then fills them in only for the release job, on v*
+    # tags. The caller must still pass them by name, or they resolve to empty
+    # here. Not required: desktop-only apps have no signing key.
     secrets:
       ANDROID_KEYSTORE_BASE64:
         required: false
@@ -95,10 +99,15 @@ on:
 # CALLER's name, so a fixed group would collide when one caller invokes multiple
 # templates. Set concurrency in your app repo's thin workflow instead.
 
+# Read-only by default: every job but release runs project code and
+# dependencies. Without this, those jobs get whatever the caller grants.
+permissions:
+  contents: read
+
 jobs:
   # Validates inputs, splits platforms into per-job outputs, and decides once
-  # whether this run is a release. Runs before the builds so a bad input or a
-  # tag/pubspec mismatch fails fast.
+  # whether this run is a release. Runs before every other job so a bad input,
+  # a refused trigger or a tag/pubspec mismatch fails fast.
   prepare:
     runs-on: ubuntu-latest
     outputs:
@@ -106,6 +115,14 @@ jobs:
       desktop_matrix: ${{ steps.context.outputs.desktop_matrix }}
       release: ${{ steps.context.outputs.release }}
     steps:
+      # pull_request_target runs with the base repo's secrets and a write token,
+      # and is how outsider PR code usually gets hold of them
+      - name: Refuse pull_request_target
+        if: github.event_name == 'pull_request_target'
+        run: |
+          echo "::error::Don't call this workflow from pull_request_target: it runs with secrets. Use pull_request instead."
+          exit 1
+
       - id: context
         env:
           PLATFORMS: ${{ inputs.platforms }}
@@ -146,6 +163,7 @@ jobs:
 
   # Platform-independent checks, run once for every platform.
   test:
+    needs: prepare
     if: inputs.run_analyze || inputs.run_test
     runs-on: ubuntu-latest
     defaults:
@@ -203,18 +221,9 @@ jobs:
           prebuild_script: ${{ inputs.prebuild_script }}
           run_build_runner: ${{ inputs.run_build_runner }}
 
-      # No signing secrets: skips (unsigned CI build) or, on a release, fails
-      - name: Configure Android signing
-        uses: johan456789/ci-templates/actions/sign-android@main
-        with:
-          keystore_base64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          keystore_password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          key_alias: ${{ secrets.ANDROID_KEY_ALIAS }}
-          key_password: ${{ secrets.ANDROID_KEY_PASSWORD }}
-          keystore_file: ${{ inputs.project_dir }}/android/app/upload-keystore.jks
-          properties_file: ${{ inputs.project_dir }}/android/key.properties
-          required: ${{ needs.prepare.outputs.release }}
-
+      # Never signed with the release key here: this job runs project code and
+      # dependencies. Without key.properties Flutter signs with the debug key;
+      # the release job re-signs.
       - name: Build APK
         env:
           BUILD_ARGS: ${{ inputs.android_build_args }}
@@ -311,6 +320,8 @@ jobs:
   # One release for all platforms, only once tests and every requested build
   # pass. !cancelled() is needed because unselected platforms' build jobs are
   # skipped, and by default a skipped dependency skips this job too.
+  # The only job that sees the signing key, so it runs no project code: it
+  # downloads the builds, signs the APKs and publishes.
   release:
     needs: [prepare, test, build-android, build-desktop]
     if: >-
@@ -319,6 +330,7 @@ jobs:
       && !contains(needs.*.result, 'failure')
       && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: write
     steps:
@@ -327,6 +339,16 @@ jobs:
           pattern: dist-*
           merge-multiple: true
           path: dist
+
+      - name: Sign APKs
+        if: needs.prepare.outputs.android == 'true'
+        uses: johan456789/ci-templates/actions/sign-android@main
+        with:
+          files: dist/*.apk
+          keystore_base64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          keystore_password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          key_alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          key_password: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
       - uses: johan456789/ci-templates/actions/publish-release@main
         with:
