@@ -6,14 +6,14 @@ inputs:
     description: Space-separated paths or globs of .apk/.aab files to sign, e.g. dist/*.apk. A `-unsigned` suffix is dropped from signed file names.
     required: true
   keystore_base64:
-    description: Base64-encoded .jks keystore file
+    description: Base64-encoded keystore file (PKCS12 .p12, or legacy JKS)
     required: false
     default: ''
   keystore_password:
     required: false
     default: ''
   key_alias:
-    description: Which key in the keystore to sign with. Optional when the keystore holds one key (as `just jks-gen` makes); required when it holds several.
+    description: Which key in the keystore to sign with. Optional when the keystore holds one key (as `just keystore-gen` makes); required when it holds several.
     required: false
     default: ''
   key_password:
@@ -60,7 +60,7 @@ runs:
         jarsigner="${JAVA_HOME:+$JAVA_HOME/bin/}jarsigner"
         keytool="${JAVA_HOME:+$JAVA_HOME/bin/}keytool"
 
-        keystore="$RUNNER_TEMP/release-keystore.jks"
+        keystore="$RUNNER_TEMP/release-keystore.p12"
         trap 'rm -f "$keystore"' EXIT
         printf '%s' "$IN_KEYSTORE_BASE64" | base64 -d > "$keystore"
 
