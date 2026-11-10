@@ -127,6 +127,10 @@ The signing key never reaches a job that builds the app. Build jobs run project 
 
 ### Set up the `release` environment (each app repo)
 
+**Shortcut:** from this repo, `just keystore-upload <app-repo>` does steps 1–3. It asks for the keystore password and checks that it opens the keystore, creates the `release` environment with the `v*` tag rule if the repo doesn't have one, uploads `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEYSTORE_PASSWORD`, and lists any repo-level `ANDROID_*` secrets left to delete (step 4). Pass `file=path/to/keystore.p12` if it isn't `release-keystore.p12` in the current directory.
+
+By hand:
+
 1. **Settings → Environments → New environment**, name it `release`.
 2. **Deployment branches and tags → Selected branches and tags → Add rule**, type **Tag**, pattern `v*`.
 3. Add the signing secrets as **environment secrets**:
@@ -147,10 +151,11 @@ The calling workflow must still pass them by name (see [Quick start](#quick-star
 
 Release builds fail if the signing secrets are missing, so an unsigned or debug-signed APK is never published. PR and `main` builds never sign and are just compile checks.
 
-Create a keystore and the base64 secret:
+Create a keystore and upload it:
 
 ```bash
-just keystore-gen   # writes release-keystore.p12 (PKCS12, alias: release), prints the base64 for ANDROID_KEYSTORE_BASE64
+just keystore-gen                  # writes release-keystore.p12 (PKCS12, alias: release), prints the base64 for ANDROID_KEYSTORE_BASE64
+just keystore-upload <app-repo>    # sets ANDROID_KEYSTORE_BASE64 + ANDROID_KEYSTORE_PASSWORD in its release environment
 ```
 
 That keystore holds one key, so `ANDROID_KEY_ALIAS` can stay unset. Override the file or key name with `just keystore-gen file=my.p12 alias=myalias`.
