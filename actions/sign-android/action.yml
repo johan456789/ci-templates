@@ -13,6 +13,7 @@ inputs:
     required: false
     default: ''
   key_alias:
+    description: Which key in the keystore to sign with. Optional when the keystore holds one key (as `just jks-gen` makes); required when it holds several.
     required: false
     default: ''
   key_password:
@@ -28,12 +29,10 @@ runs:
       env:
         IN_KEYSTORE_BASE64: ${{ inputs.keystore_base64 }}
         IN_KEYSTORE_PASSWORD: ${{ inputs.keystore_password }}
-        IN_KEY_ALIAS: ${{ inputs.key_alias }}
       run: |
         missing=""
         [ -z "$IN_KEYSTORE_BASE64" ] && missing="$missing ANDROID_KEYSTORE_BASE64"
         [ -z "$IN_KEYSTORE_PASSWORD" ] && missing="$missing ANDROID_KEYSTORE_PASSWORD"
-        [ -z "$IN_KEY_ALIAS" ] && missing="$missing ANDROID_KEY_ALIAS"
         if [ -n "$missing" ]; then
           echo "::error::Release signing is missing:$missing. Add them as secrets of the 'release' environment (Settings → Environments → release) and check that the calling workflow passes them under secrets: — refusing to publish an unsigned APK"
           exit 1
@@ -59,10 +58,28 @@ runs:
         # Newest build-tools: apksigner 35+ page-aligns native libs to 16 KB
         apksigner="$(find "$sdk/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)/apksigner"
         jarsigner="${JAVA_HOME:+$JAVA_HOME/bin/}jarsigner"
+        keytool="${JAVA_HOME:+$JAVA_HOME/bin/}keytool"
 
         keystore="$RUNNER_TEMP/release-keystore.jks"
         trap 'rm -f "$keystore"' EXIT
         printf '%s' "$IN_KEYSTORE_BASE64" | base64 -d > "$keystore"
+
+        alias="$IN_KEY_ALIAS"
+        if [ -z "$alias" ]; then
+          # No alias given: use the keystore's only key. English output so the
+          # labels below parse whatever the runner's locale.
+          if ! listing="$("$keytool" -J-Duser.language=en -list -v -keystore "$keystore" -storepass:env KS_PASS 2>&1)"; then
+            echo "::error::Couldn't open the keystore — check ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD (${listing%%$'\n'*})"
+            exit 1
+          fi
+          mapfile -t aliases < <(awk -F': ' '/^Alias name:/ { a = $2 } /^Entry type: PrivateKeyEntry/ { print a }' <<<"$listing")
+          if [ "${#aliases[@]}" -ne 1 ]; then
+            echo "::error::The keystore holds ${#aliases[@]} keys (${aliases[*]}); set ANDROID_KEY_ALIAS to pick one"
+            exit 1
+          fi
+          alias="${aliases[0]}"
+          echo "Signing with the keystore's only key: $alias"
+        fi
 
         # Unquoted on purpose: expand the globs in FILES; drop globs with no match
         shopt -s nullglob
@@ -78,7 +95,7 @@ runs:
             *.apk)
               out="${f%.apk}"; out="${out%-unsigned}.apk"
               # Replaces any existing (e.g. debug) signature
-              "$apksigner" sign --ks "$keystore" --ks-key-alias "$IN_KEY_ALIAS" \
+              "$apksigner" sign --ks "$keystore" --ks-key-alias "$alias" \
                 --ks-pass env:KS_PASS --key-pass env:KEY_PASS --v4-signing-enabled false \
                 --out "$out.tmp" "$f"
               rm -f "$f"
@@ -88,7 +105,7 @@ runs:
             *.aab)
               out="${f%.aab}"; out="${out%-unsigned}.aab"
               "$jarsigner" -keystore "$keystore" -storepass:env KS_PASS -keypass:env KEY_PASS \
-                -signedjar "$out.tmp" "$f" "$IN_KEY_ALIAS" > /dev/null
+                -signedjar "$out.tmp" "$f" "$alias" > /dev/null
               rm -f "$f"
               mv "$out.tmp" "$out"
               "$jarsigner" -verify "$out" > /dev/null

@@ -88,6 +88,7 @@ on:
       ANDROID_KEYSTORE_PASSWORD:
         required: false
       ANDROID_KEY_ALIAS:
+        description: Optional; only needed when the keystore holds more than one key
         required: false
       ANDROID_KEY_PASSWORD:
         required: false
