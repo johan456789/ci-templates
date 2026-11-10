@@ -56,7 +56,7 @@ jobs:
       DOTENV: ${{ secrets.DOTENV }}  # only if the app uses a .env; drop otherwise
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}        # optional
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}  # optional
 ```
 
@@ -91,11 +91,11 @@ jobs:
     secrets:
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}        # optional
       ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}  # optional
 ```
 
-`app-android` requires the first three, so a caller that forgets them fails on its first run rather than its first release.
+`app-android` requires the first two, so a caller that forgets them fails on its first run rather than its first release.
 
 Repos that aren't build-ready after checkout (e.g. a gitignored native
 library compiled by a repo script) can hook in setup without forking the
@@ -133,9 +133,9 @@ The signing key never reaches a job that builds the app. Build jobs run project 
 
    | Secret | Description |
    |---|---|
-   | `ANDROID_KEYSTORE_BASE64` | base64-encoded `.jks` keystore |
+   | `ANDROID_KEYSTORE_BASE64` | base64-encoded keystore (`.p12`) |
    | `ANDROID_KEYSTORE_PASSWORD` | keystore password |
-   | `ANDROID_KEY_ALIAS` | key alias |
+   | `ANDROID_KEY_ALIAS` | which key in the keystore to sign with — **optional**; only needed when the keystore holds more than one key (`just keystore-gen` makes one) |
    | `ANDROID_KEY_PASSWORD` | key password — **optional**; defaults to `ANDROID_KEYSTORE_PASSWORD` (correct for PKCS12 keystores, which is `keytool`'s default) |
 
 4. Delete any repo-level copies of those secrets (**Settings → Secrets and variables → Actions**).
@@ -150,10 +150,10 @@ Release builds fail if the signing secrets are missing, so an unsigned or debug-
 Create a keystore and the base64 secret:
 
 ```bash
-just jks-gen   # writes release-keystore.jks (alias: release), prints the base64 for ANDROID_KEYSTORE_BASE64
+just keystore-gen   # writes release-keystore.p12 (PKCS12, alias: release), prints the base64 for ANDROID_KEYSTORE_BASE64
 ```
 
-Set `ANDROID_KEY_ALIAS` to the alias you generated with (`release` by default). Override with `just jks-gen file=my.jks alias=myalias`.
+That keystore holds one key, so `ANDROID_KEY_ALIAS` can stay unset. Override the file or key name with `just keystore-gen file=my.p12 alias=myalias`.
 
 ### No Gradle signing wiring
 

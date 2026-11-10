@@ -1,3 +1,5 @@
 # Android signing keystores (never commit)
 *.jks
 *.keystore
+*.p12
+*.pfx
