@@ -13,7 +13,8 @@ ci-templates/
     ├── setup-flutter/           # Flutter toolchain with caching (+ JDK for Android)
     ├── prepare-flutter/         # pub get, .env, prebuild hook, build_runner
     ├── sign-android/            # sign built APKs/AABs with the release key (release job only)
-    └── publish-release/         # create the tag's GitHub Release or add files to it
+    ├── publish-release/         # create the tag's GitHub Release or add files to it
+    └── package-appimage/        # pack a built Linux app dir into an AppImage + .zsync
 ```
 
 ## Naming
@@ -30,7 +31,7 @@ ci-templates/
 
 | Workflow | For | Does |
 |---|---|---|
-| `app-flutter.yml` | Flutter apps | analyze + test once; builds each platform in `platforms` (APK, linux tar.gz, windows/macos zip); on `v*` tags, signs the APKs and publishes one GitHub Release with every build, only if everything passed |
+| `app-flutter.yml` | Flutter apps | analyze + test once; builds each platform in `platforms` (APK, linux tar.gz + AppImage, windows/macos zip); on `v*` tags, signs the APKs and publishes one GitHub Release with every build, only if everything passed |
 | `app-android.yml` | Native Kotlin Android | runs a Gradle task (default `assembleRelease`), collects APK/AAB; on `v*` tags, signs them and publishes a release |
 
 ## Quick start
@@ -74,9 +75,11 @@ Useful inputs:
       flutter_version: '3.24.0' # pin if needed
       android_abi_splits: true  # one APK per CPU architecture instead of universal
       android_build_args: --dart-define-from-file=.env  # extra flags for `flutter build apk`
+      linux_appimage_name: My App          # launcher name (required with "linux"); see "Linux AppImages"
+      linux_appimage_categories: Office;   # menu categories (required with "linux")
 ```
 
-Inputs that only affect one platform's build start with that platform (`android_*`).
+Inputs that only affect one platform's build start with that platform (`android_*`, `linux_*`).
 
 ### Native Kotlin Android app
 
@@ -198,6 +201,21 @@ git tag v1.2.3 && git push origin v1.2.3
 - Built APKs are attached as release assets — point Obtainium at the repo's GitHub Releases and it picks up updates.
 - Obtainium installs **APKs only** (not AABs) — use `app-flutter.yml` or `assembleRelease`, not `bundleRelease`.
 - Private repos work in Obtainium since v0.14.11-beta but require each user to supply a PAT with read access.
+
+## Linux AppImages & AppManager
+
+Every Linux build (`"linux"` in `platforms`) also ships `<repo>-x86_64.AppImage` and `<repo>-x86_64.AppImage.zsync`, next to the tar.gz. Install it with [AppManager](https://github.com/kem-a/AppManager) (or any AppImage updater), and it updates itself from the repo's GitHub Releases:
+
+- The AppImage embeds `gh-releases-zsync|<owner>|<repo>|latest|<repo>-x86_64.AppImage.zsync`, so updaters know where to look. With the `.zsync` file they download only the changed blocks.
+- Its `.desktop` file sets `X-AppImage-Version` to the tag minus the `v`. AppManager reads the installed version from there and compares it with the tag. Without it, every check would report an update.
+- **Icon:** `linux_appimage_icon` (`.png` or `.svg`, relative to `project_dir`). Defaults to the Android launcher icon at `android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png`, which every Flutter project has but is only 192×192; point it at something larger if you have it.
+- **Launcher name and category (required):** `flutter build linux` makes no `.desktop` file, the thing launchers, docks and AppManager read an app's name and menu section from, so the template writes one and you supply the values: `linux_appimage_name` (e.g. `My App`) and `linux_appimage_categories` (e.g. `Office;`, from the [category registry](https://specifications.freedesktop.org/menu-spec/latest/category-registry.html)). This doesn't change the window title, which the app's own code sets in `linux/runner/my_application.cc`. The file is named `<APPLICATION_ID>.desktop` (from `linux/CMakeLists.txt`).
+- **Your own .desktop instead:** for actions, keywords or anything else, pass `linux_appimage_desktop_file` in place of the name and categories. Its `Icon=` names the icon, and `X-AppImage-Version` is overwritten.
+- **Private repos:** AppManager supports them since [kem-a/AppManager@fa178a1](https://github.com/kem-a/AppManager/commit/fa178a11388e2e057fc317ec72272f590316d0ea). Each user adds a GitHub token in its preferences: fine-grained with **Contents: read** on the repo, or classic with `repo`. Private updates download the whole AppImage; delta updates are public-only.
+- **Pre-releases:** AppManager drops everything after the numbers, so `v1.3.0-rc1` and `v1.3.0` both read as `1.3.0`, and it won't offer the final release to someone on the rc. Bump the patch number instead of using `-rc` tags.
+- **Runs on:** the AppImage bundles the Flutter build but uses the host's GTK 3 and glibc. It's built on `ubuntu-latest`, so distros older than that may not run it.
+
+Other Linux apps can reuse the packaging: build, then call `johan456789/ci-templates/actions/package-appimage@main` with the built directory, a file name, a display name, categories, a version and an icon. See the action's inputs.
 
 ## Versioning these templates
 

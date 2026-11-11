@@ -78,6 +78,26 @@ on:
         type: string
         required: false
         default: ''
+      linux_appimage_name:
+        description: App name shown in launchers, docks and AppImage managers, e.g. My App. Linux builds always ship an AppImage, so this is required when platforms has "linux", unless linux_appimage_desktop_file is set.
+        type: string
+        required: false
+        default: ''
+      linux_appimage_categories:
+        description: Freedesktop menu categories, e.g. Office; or Development;IDE; (https://specifications.freedesktop.org/menu-spec/latest/category-registry.html). Required when platforms has "linux", unless linux_appimage_desktop_file is set.
+        type: string
+        required: false
+        default: ''
+      linux_appimage_icon:
+        description: AppImage icon (.png or .svg), relative to project_dir. Empty = the Android launcher icon (android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png).
+        type: string
+        required: false
+        default: ''
+      linux_appimage_desktop_file:
+        description: Your own .desktop file for the AppImage, relative to project_dir, instead of linux_appimage_name and linux_appimage_categories. Empty = generate one named after APPLICATION_ID in linux/CMakeLists.txt.
+        type: string
+        required: false
+        default: ''
     # Keep the ANDROID_* secrets in the app repo's `release` environment, not as
     # repo secrets: GitHub then fills them in only for the release job, on v*
     # tags. The caller must still pass them by name, or they resolve to empty
@@ -128,10 +148,25 @@ jobs:
         env:
           PLATFORMS: ${{ inputs.platforms }}
           PUBLISH_RELEASE: ${{ inputs.publish_release }}
+          LINUX_APPIMAGE_NAME: ${{ inputs.linux_appimage_name }}
+          LINUX_APPIMAGE_CATEGORIES: ${{ inputs.linux_appimage_categories }}
+          LINUX_APPIMAGE_DESKTOP_FILE: ${{ inputs.linux_appimage_desktop_file }}
         run: |
           if ! jq -e 'type == "array" and length > 0 and all(.[]; IN("android", "linux", "windows", "macos"))' <<<"$PLATFORMS" > /dev/null; then
             echo "::error::platforms must be a JSON array with values from: android, linux, windows, macos (got: $PLATFORMS)"
             exit 1
+          fi
+          # Linux builds always ship an AppImage, whose .desktop file needs these
+          if jq -e 'index("linux") != null' <<<"$PLATFORMS" > /dev/null; then
+            if [ -n "$LINUX_APPIMAGE_DESKTOP_FILE" ]; then
+              if [ -n "$LINUX_APPIMAGE_NAME$LINUX_APPIMAGE_CATEGORIES" ]; then
+                echo "::error::Set either linux_appimage_desktop_file or linux_appimage_name + linux_appimage_categories, not both"
+                exit 1
+              fi
+            elif [ -z "$LINUX_APPIMAGE_NAME" ] || [ -z "$LINUX_APPIMAGE_CATEGORIES" ]; then
+              echo "::error::Linux builds ship an AppImage, which needs linux_appimage_name and linux_appimage_categories (e.g. Office;), or linux_appimage_desktop_file"
+              exit 1
+            fi
           fi
           is_release_tag=false
           [[ "$GITHUB_REF" == refs/tags/v* ]] && is_release_tag=true
@@ -295,6 +330,51 @@ jobs:
         run: |
           mkdir -p dist
           tar -czf "dist/${{ github.event.repository.name }}-linux-x64.tar.gz" -C build/linux/x64/release bundle
+
+      - id: appimage
+        name: Prepare AppImage inputs (linux)
+        if: runner.os == 'Linux'
+        env:
+          ICON: ${{ inputs.linux_appimage_icon }}
+          DESKTOP_FILE: ${{ inputs.linux_appimage_desktop_file }}
+          PROJECT_DIR: ${{ inputs.project_dir }}
+        run: |
+          # The tag on release builds (it's what AppImage managers compare the
+          # installed version against); pubspec.yaml's version otherwise
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version=$(sed -nE "s/^version:[[:space:]]*['\"]?([^+'\" #]+).*/\1/p" pubspec.yaml | head -n1)
+          fi
+          app_id=$(sed -nE 's/^[[:space:]]*set\(APPLICATION_ID "([^"]+)"\).*/\1/p' linux/CMakeLists.txt | head -n1)
+          icon="${ICON:-android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png}"
+          if [ ! -f "$icon" ]; then
+            echo "::error::AppImage icon '$icon' not found in $PROJECT_DIR; set linux_appimage_icon"
+            exit 1
+          fi
+          # The action runs from the workspace root, not project_dir
+          {
+            echo "version=$version"
+            echo "app_id=$app_id"
+            echo "icon=$PROJECT_DIR/$icon"
+            if [ -n "$DESKTOP_FILE" ]; then
+              echo "desktop_file=$PROJECT_DIR/$DESKTOP_FILE"
+            fi
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Package AppImage (linux)
+        if: runner.os == 'Linux'
+        uses: johan456789/ci-templates/actions/package-appimage@main
+        with:
+          dir: ${{ inputs.project_dir }}/build/linux/x64/release/bundle
+          name: ${{ github.event.repository.name }}
+          display_name: ${{ inputs.linux_appimage_name }}
+          categories: ${{ inputs.linux_appimage_categories }}
+          version: ${{ steps.appimage.outputs.version }}
+          icon: ${{ steps.appimage.outputs.icon }}
+          app_id: ${{ steps.appimage.outputs.app_id }}
+          desktop_file: ${{ steps.appimage.outputs.desktop_file }}
+          output_dir: ${{ inputs.project_dir }}/dist
 
       - name: Package (windows)
         if: runner.os == 'Windows'

@@ -1,0 +1,209 @@
+name: Package AppImage
+description: Packs an already-built Linux app directory into an AppImage with embedded GitHub update information, plus the .zsync file updaters use for delta updates. Works for any toolkit; the caller does the build.
+
+inputs:
+  dir:
+    description: Built app directory to package, copied whole into the AppImage (e.g. a Flutter bundle/ with the binary, lib/ and data/)
+    required: true
+  name:
+    description: Base name for the output files (<name>-<arch>.AppImage), e.g. the repo name. Only used in file names, never shown as the app's name.
+    required: true
+  display_name:
+    description: App name shown in launchers, docks and AppImage managers (the .desktop Name=), e.g. My App. Required unless desktop_file is set.
+    required: false
+    default: ''
+  categories:
+    description: Freedesktop menu categories for the .desktop file, e.g. Office; or Development;IDE; (see https://specifications.freedesktop.org/menu-spec/latest/category-registry.html). Required unless desktop_file is set.
+    required: false
+    default: ''
+  version:
+    description: App version written to X-AppImage-Version in the .desktop file, which AppImage managers read as the installed version. Use the release tag minus the leading v.
+    required: true
+  icon:
+    description: App icon, .png (256x256 or larger is best) or .svg
+    required: true
+  exec:
+    description: Executable to launch, relative to dir. Empty = the only executable file at the top level of dir.
+    required: false
+    default: ''
+  app_id:
+    description: Desktop ID, e.g. com.example.myapp. Names the generated .desktop file and icon so desktops can match the running window to it. Empty = name. Not used with desktop_file.
+    required: false
+    default: ''
+  desktop_file:
+    description: Your own .desktop file, instead of display_name and categories. Its Icon= key names the icon inside the AppImage; X-AppImage-Version is overwritten. Empty = generate one.
+    required: false
+    default: ''
+  update_information:
+    description: Update information embedded in the AppImage. Empty = gh-releases-zsync for this repo's latest release, matching the file this action names.
+    required: false
+    default: ''
+  output_dir:
+    description: Where the .AppImage and .zsync are written
+    required: false
+    default: dist
+
+outputs:
+  appimage:
+    description: Path of the built AppImage
+    value: ${{ steps.build.outputs.appimage }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install packaging tools
+      shell: bash
+      run: |
+        set -euo pipefail
+        # appimagetool shells out to zsyncmake for the .zsync and validates the
+        # .desktop with desktop-file-validate when they're on PATH
+        if ! command -v zsyncmake > /dev/null || ! command -v desktop-file-validate > /dev/null; then
+          sudo apt-get update
+          sudo apt-get install -y zsync desktop-file-utils
+        fi
+
+        # Pinned: upstream's "continuous" releases change under the same URL.
+        # To bump, update the versions and hashes together.
+        tool_version=1.9.1
+        runtime_version=20251108
+        case "$(uname -m)" in
+          x86_64)
+            arch=x86_64
+            tool_sha256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0
+            runtime_sha256=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
+            ;;
+          aarch64)
+            arch=aarch64
+            tool_sha256=f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158
+            runtime_sha256=00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444
+            ;;
+          *)
+            echo "::error::package-appimage supports x86_64 and aarch64 runners (got $(uname -m))"
+            exit 1
+            ;;
+        esac
+
+        tools="$RUNNER_TEMP/appimage-tools"
+        mkdir -p "$tools"
+        curl -fsSLo "$tools/appimagetool" "https://github.com/AppImage/appimagetool/releases/download/$tool_version/appimagetool-$arch.AppImage"
+        # Passing --runtime-file stops appimagetool downloading the latest runtime itself
+        curl -fsSLo "$tools/runtime" "https://github.com/AppImage/type2-runtime/releases/download/$runtime_version/runtime-$arch"
+        sha256sum -c - <<EOF
+        $tool_sha256  $tools/appimagetool
+        $runtime_sha256  $tools/runtime
+        EOF
+        chmod +x "$tools/appimagetool"
+        echo "APPIMAGE_TOOLS=$tools" >> "$GITHUB_ENV"
+        echo "APPIMAGE_ARCH=$arch" >> "$GITHUB_ENV"
+
+    - id: build
+      name: Build AppImage
+      shell: bash
+      env:
+        IN_DIR: ${{ inputs.dir }}
+        IN_NAME: ${{ inputs.name }}
+        IN_DISPLAY_NAME: ${{ inputs.display_name }}
+        IN_CATEGORIES: ${{ inputs.categories }}
+        IN_VERSION: ${{ inputs.version }}
+        IN_ICON: ${{ inputs.icon }}
+        IN_EXEC: ${{ inputs.exec }}
+        IN_APP_ID: ${{ inputs.app_id }}
+        IN_DESKTOP_FILE: ${{ inputs.desktop_file }}
+        IN_UPDATE_INFORMATION: ${{ inputs.update_information }}
+        IN_OUTPUT_DIR: ${{ inputs.output_dir }}
+      run: |
+        set -euo pipefail
+        arch="$APPIMAGE_ARCH"
+
+        [ -d "$IN_DIR" ] || { echo "::error::dir '$IN_DIR' is not a directory"; exit 1; }
+        [ -f "$IN_ICON" ] || { echo "::error::icon '$IN_ICON' not found"; exit 1; }
+        case "$IN_ICON" in
+          *.png) icon_ext=png ;;
+          *.svg) icon_ext=svg ;;
+          *) echo "::error::icon must be a .png or .svg (got $IN_ICON)"; exit 1 ;;
+        esac
+        if [ -n "$IN_DESKTOP_FILE" ]; then
+          [ -f "$IN_DESKTOP_FILE" ] || { echo "::error::desktop_file '$IN_DESKTOP_FILE' not found"; exit 1; }
+          if [ -n "$IN_DISPLAY_NAME$IN_CATEGORIES" ]; then
+            echo "::error::Set either desktop_file or display_name + categories, not both: the .desktop file already has Name= and Categories="
+            exit 1
+          fi
+        elif [ -z "$IN_DISPLAY_NAME" ] || [ -z "$IN_CATEGORIES" ]; then
+          echo "::error::Set display_name and categories (e.g. Office;), or pass your own desktop_file"
+          exit 1
+        fi
+
+        exec_rel="$IN_EXEC"
+        if [ -z "$exec_rel" ]; then
+          mapfile -t found < <(find "$IN_DIR" -mindepth 1 -maxdepth 1 -type f -executable -printf '%f\n')
+          if [ "${#found[@]}" -ne 1 ]; then
+            echo "::error::Found ${#found[@]} executable files at the top of $IN_DIR (${found[*]:-none}); set exec to the one to launch"
+            exit 1
+          fi
+          exec_rel="${found[0]}"
+        fi
+        [ -x "$IN_DIR/$exec_rel" ] || { echo "::error::exec '$exec_rel' is not an executable file in $IN_DIR"; exit 1; }
+
+        appdir="$RUNNER_TEMP/AppDir"
+        rm -rf "$appdir"
+        mkdir -p "$appdir/usr/lib/$IN_NAME"
+        # The whole directory moves as one, so apps that find their files next
+        # to the executable (Flutter's lib/ and data/) keep working
+        cp -a "$IN_DIR/." "$appdir/usr/lib/$IN_NAME/"
+
+        cat > "$appdir/AppRun" <<EOF
+        #!/bin/sh
+        HERE="\$(dirname "\$(readlink -f "\$0")")"
+        exec "\$HERE/usr/lib/$IN_NAME/$exec_rel" "\$@"
+        EOF
+        chmod +x "$appdir/AppRun"
+
+        if [ -n "$IN_DESKTOP_FILE" ]; then
+          desktop="$appdir/$(basename "$IN_DESKTOP_FILE")"
+          cp "$IN_DESKTOP_FILE" "$desktop"
+          icon_name=$(sed -n 's/^Icon=//p' "$desktop" | head -n1)
+          [ -n "$icon_name" ] || { echo "::error::$IN_DESKTOP_FILE has no Icon= key"; exit 1; }
+          # The icon goes next to the .desktop under the name Icon= gives it
+          icon_name=$(basename "$icon_name")
+          icon_name="${icon_name%.png}"
+          icon_name="${icon_name%.svg}"
+        else
+          id="${IN_APP_ID:-$IN_NAME}"
+          icon_name="$id"
+          desktop="$appdir/$id.desktop"
+          printf '%s\n' \
+            '[Desktop Entry]' \
+            'Type=Application' \
+            "Name=$IN_DISPLAY_NAME" \
+            "Exec=$(basename "$exec_rel")" \
+            "Icon=$icon_name" \
+            "Categories=${IN_CATEGORIES%;};" \
+            'Terminal=false' > "$desktop"
+        fi
+        # AppImage managers read the installed version from here, then compare
+        # it with the release tag; without it every check reports an update
+        sed -i '/^X-AppImage-Version=/d' "$desktop"
+        sed -i "0,/^\[Desktop Entry\]/s//&\nX-AppImage-Version=$IN_VERSION/" "$desktop"
+        cp "$IN_ICON" "$appdir/$icon_name.$icon_ext"
+
+        mkdir -p "$IN_OUTPUT_DIR"
+        out_dir=$(cd "$IN_OUTPUT_DIR" && pwd)
+        file="$IN_NAME-$arch.AppImage"
+        update_information="${IN_UPDATE_INFORMATION:-gh-releases-zsync|${GITHUB_REPOSITORY%%/*}|${GITHUB_REPOSITORY#*/}|latest|$file.zsync}"
+        echo "Update information: $update_information"
+
+        # appimagetool runs zsyncmake in the current directory, which is where
+        # the .zsync lands. Extract-and-run avoids needing FUSE on the runner.
+        (
+          cd "$out_dir"
+          APPIMAGE_EXTRACT_AND_RUN=1 ARCH="$arch" "$APPIMAGE_TOOLS/appimagetool" \
+            --runtime-file "$APPIMAGE_TOOLS/runtime" \
+            -u "$update_information" \
+            "$appdir" "$file"
+        )
+
+        for f in "$out_dir/$file" "$out_dir/$file.zsync"; do
+          [ -f "$f" ] || { echo "::error::appimagetool did not produce $f"; exit 1; }
+        done
+        ls -lh "$out_dir/$file" "$out_dir/$file.zsync"
+        echo "appimage=$out_dir/$file" >> "$GITHUB_OUTPUT"
